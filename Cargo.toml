@@ -52,7 +52,7 @@ apollo-utils = "0.1.0"
 cosmwasm-schema = "1.2.1"
 cosmwasm-std = "1.2.1"
 cw-controllers = "1.0.1"
-cw-dex = {path = "../cw-dex/cw-dex"}
+cw-dex = {git = "https://github.com/quasar-finance/cw-dex", branch = "feat/deprecate-osmo-gamm"}
 cw-storage-plus = "1.0.1"
 cw2 = "1.0.1"
 cw20 = "1.0.1"
