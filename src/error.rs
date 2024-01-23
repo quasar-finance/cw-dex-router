@@ -31,8 +31,14 @@ pub enum ContractError {
     #[error("Unauthorized")]
     Unauthorized,
 
-    #[error("Invalid swap operations: {operations:?}")]
-    InvalidSwapOperations { operations: Vec<SwapOperation> },
+    #[error("Invalid swap operations: {operations:?} {reason}")]
+    InvalidSwapOperations {
+        operations: Vec<SwapOperation>,
+        reason: String,
+    },
+
+    #[error("Paths to check is empty, excluded paths excludes all valid paths")]
+    NoPathsToCheck,
 
     #[error("Did not receive minimum amount")]
     FailedMinimumReceive,

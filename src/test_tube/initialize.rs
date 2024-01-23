@@ -2,9 +2,9 @@
 pub mod initialize {
     use std::str::FromStr;
 
+    use cosmwasm_schema::cw_serde;
     use cosmwasm_std::{coin, Addr, Attribute, Coin, Decimal, Uint128};
     use cw_dex::osmosis::OsmosisPool;
-    use osmosis_std::types::cosmos::base::v1beta1;
     use osmosis_std::types::osmosis::concentratedliquidity::v1beta1::{
         CreateConcentratedLiquidityPoolsProposal, Pool, PoolRecord, PoolsRequest,
     };
@@ -13,7 +13,12 @@ pub mod initialize {
     use osmosis_std::types::osmosis::poolmanager::v1beta1::{
         MsgSwapExactAmountIn, SpotPriceRequest, SwapAmountInRoute,
     };
-    use osmosis_std::types::osmosis::tokenfactory::v1beta1::QueryDenomsFromCreatorRequest;
+    use osmosis_std::types::osmosis::tokenfactory::v1beta1::{
+        MsgCreateDenom, MsgMint, QueryDenomsFromCreatorRequest,
+    };
+    use osmosis_std::types::{
+        cosmos::base::v1beta1::Coin as OsmoCoin, osmosis::gamm::v1beta1::MsgExitSwapShareAmountIn,
+    };
 
     use osmosis_test_tube::osmosis_std::types::osmosis::gamm::poolmodels::balancer::v1beta1::MsgCreateBalancerPool;
     use osmosis_test_tube::osmosis_std::types::osmosis::gamm::v1beta1::PoolAsset;
@@ -27,17 +32,21 @@ pub mod initialize {
         SigningAccount, TokenFactory, Wasm,
     };
 
-    use crate::msg::{ExecuteMsg, InstantiateMsg};
+    use crate::msg::{BestPathForPairResponse, ExecuteMsg, InstantiateMsg, QueryMsg};
     use crate::operations::{
         SwapOperationBase, SwapOperationsListBase, SwapOperationsListUnchecked,
     };
     use crate::test_tube::helpers::{get_event_attributes_by_ty_and_key, sort_tokens};
 
-    const ADMIN_BALANCE_AMOUNT: u128 = 340282366920938463463374607431768211455u128;
+    const ADMIN_BALANCE_AMOUNT: u128 = 3402823669209384634633746074317682114u128;
     const TOKENS_PROVIDED_AMOUNT: &str = "1000000000000";
-    const DENOM_BASE: &str = "uatom";
-    const DENOM_QUOTE: &str = "uosmo";
+    const FEE_DENOM: &str = "uosmo";
+    const DENOM_BASE: &str = "udydx";
+    const DENOM_QUOTE: &str = "uryeth";
+    // const SUBDENOM_BASE: &str = "udydx";
+    // const SUBDENOM_QUOTE: &str = "uryeth";
 
+    #[cw_serde]
     pub struct PoolWithDenoms {
         pool: u64,
         denom0: String,
@@ -45,16 +54,70 @@ pub mod initialize {
     }
 
     pub fn default_init() -> (OsmosisTestApp, Addr, Vec<PoolWithDenoms>, SigningAccount) {
+        let app = OsmosisTestApp::new();
+        let tf = TokenFactory::new(&app);
+
+        // Create new account with initial funds
+        let admin = app
+            .init_account(&[Coin::new(ADMIN_BALANCE_AMOUNT, FEE_DENOM)])
+            .unwrap();
+
+        let res0 = tf
+            .create_denom(
+                MsgCreateDenom {
+                    sender: admin.address().to_string(),
+                    subdenom: DENOM_BASE.to_string(),
+                },
+                &admin,
+            )
+            .unwrap();
+        let res1 = tf
+            .create_denom(
+                MsgCreateDenom {
+                    sender: admin.address().to_string(),
+                    subdenom: DENOM_QUOTE.to_string(),
+                },
+                &admin,
+            )
+            .unwrap();
+
+        let denom0 = res0.data.new_token_denom;
+        let denom1 = res1.data.new_token_denom;
+
+        tf.mint(
+            MsgMint {
+                sender: admin.address().to_string(),
+                amount: Some(OsmoCoin {
+                    denom: denom0.clone(),
+                    amount: ADMIN_BALANCE_AMOUNT.to_string(),
+                }),
+                mint_to_address: admin.address().to_string(),
+            },
+            &admin,
+        )
+        .unwrap();
+
+        tf.mint(
+            MsgMint {
+                sender: admin.address().to_string(),
+                amount: Some(OsmoCoin {
+                    denom: denom1.clone(),
+                    amount: ADMIN_BALANCE_AMOUNT.to_string(),
+                }),
+                mint_to_address: admin.address().to_string(),
+            },
+            &admin,
+        )
+        .unwrap();
+
         init_test_contract(
+            app,
+            admin,
             "./test-tube-build/wasm32-unknown-unknown/release/cw_dex_router.wasm",
-            &[
-                Coin::new(ADMIN_BALANCE_AMOUNT, DENOM_BASE),
-                Coin::new(ADMIN_BALANCE_AMOUNT, DENOM_QUOTE),
-            ],
             vec![MsgCreateConcentratedPool {
                 sender: "overwritten".to_string(),
-                denom0: DENOM_BASE.to_string(),
-                denom1: DENOM_QUOTE.to_string(),
+                denom0: denom0.to_string(),
+                denom1: denom1.to_string(),
                 tick_spacing: 100,
                 spread_factor: Decimal::from_str("0.01").unwrap().atomics().to_string(),
             }],
@@ -66,7 +129,7 @@ pub mod initialize {
                         weight: "1".to_string(),
                         token: Some(
                             Coin {
-                                denom: DENOM_BASE.to_string(),
+                                denom: denom0.to_string(),
                                 amount: Uint128::from(1000000u128),
                             }
                             .into(),
@@ -76,7 +139,7 @@ pub mod initialize {
                         weight: "1".to_string(),
                         token: Some(
                             Coin {
-                                denom: DENOM_QUOTE.to_string(),
+                                denom: denom1.to_string(),
                                 amount: Uint128::from(1000000u128),
                             }
                             .into(),
@@ -89,19 +152,16 @@ pub mod initialize {
     }
 
     pub fn init_test_contract(
+        app: OsmosisTestApp,
+        admin: SigningAccount,
         filename: &str,
-        admin_balance: &[Coin],
         cl_pools: Vec<MsgCreateConcentratedPool>,
         gamm_pools: Vec<MsgCreateBalancerPool>,
     ) -> (OsmosisTestApp, Addr, Vec<PoolWithDenoms>, SigningAccount) {
         // Create new osmosis appchain instance
-        let app = OsmosisTestApp::new();
         let pm = PoolManager::new(&app);
         let cl = ConcentratedLiquidity::new(&app);
         let wasm = Wasm::new(&app);
-
-        // Create new account with initial funds
-        let admin = app.init_account(admin_balance).unwrap();
 
         // Load compiled wasm bytecode
         let wasm_byte_code = std::fs::read(filename).unwrap();
@@ -114,7 +174,7 @@ pub mod initialize {
         let mut pools: Vec<PoolWithDenoms> = vec![];
 
         let gov = GovWithAppAccess::new(&app);
-        for pool in cl_pools {
+        for cl_pool in cl_pools {
             // Setup a dummy CL pool to work with
             gov.propose_and_execute(
                 CreateConcentratedLiquidityPoolsProposal::TYPE_URL.to_string(),
@@ -122,10 +182,10 @@ pub mod initialize {
                     title: "CL Pool".to_string(),
                     description: "So that we can trade it".to_string(),
                     pool_records: vec![PoolRecord {
-                        denom0: pool.denom0,
-                        denom1: pool.denom1,
-                        tick_spacing: pool.tick_spacing,
-                        spread_factor: pool.spread_factor,
+                        denom0: cl_pool.denom0.clone(),
+                        denom1: cl_pool.denom1.clone(),
+                        tick_spacing: cl_pool.tick_spacing.clone(),
+                        spread_factor: cl_pool.spread_factor.clone(),
                     }],
                 },
                 admin.address(),
@@ -138,12 +198,12 @@ pub mod initialize {
             let pool: Pool = Pool::decode(pools_response.pools[0].value.as_slice()).unwrap();
 
             let tokens_provided = vec![
-                v1beta1::Coin {
-                    denom: DENOM_BASE.to_string(),
+                OsmoCoin {
+                    denom: cl_pool.denom0.to_string(),
                     amount: TOKENS_PROVIDED_AMOUNT.to_string(),
                 },
-                v1beta1::Coin {
-                    denom: DENOM_QUOTE.to_string(),
+                OsmoCoin {
+                    denom: cl_pool.denom1.to_string(),
                     amount: TOKENS_PROVIDED_AMOUNT.to_string(),
                 },
             ];
@@ -174,38 +234,38 @@ pub mod initialize {
 
             pools.push(PoolWithDenoms {
                 pool: pool.id,
-                denom0: pool.token0,
-                denom1: pool.token1,
+                denom0: cl_pool.denom0,
+                denom1: cl_pool.denom1,
             });
         }
 
-        for pool in gamm_pools {
+        for gamm_pool in gamm_pools {
             // Create a new pool
             let gamm = Gamm::new(&app);
             let response = gamm
                 .create_basic_pool(
                     &[
                         Coin {
-                            denom: pool.pool_assets[0]
+                            denom: gamm_pool.pool_assets[0]
                                 .token
                                 .as_ref()
                                 .unwrap()
                                 .denom
                                 .to_string(),
                             amount: Uint128::from_str(
-                                &pool.pool_assets[0].token.as_ref().unwrap().amount,
+                                &gamm_pool.pool_assets[0].token.as_ref().unwrap().amount,
                             )
                             .unwrap(),
                         },
                         Coin {
-                            denom: pool.pool_assets[1]
+                            denom: gamm_pool.pool_assets[1]
                                 .token
                                 .as_ref()
                                 .unwrap()
                                 .denom
                                 .to_string(),
                             amount: Uint128::from_str(
-                                &pool.pool_assets[1].token.as_ref().unwrap().amount,
+                                &gamm_pool.pool_assets[1].token.as_ref().unwrap().amount,
                             )
                             .unwrap(),
                         },
@@ -236,27 +296,27 @@ pub mod initialize {
                 share_out_amount: "1".to_string(),
                 token_in_maxs: vec![
                     Coin {
-                        denom: pool.pool_assets[0]
+                        denom: gamm_pool.pool_assets[0]
                             .token
                             .as_ref()
                             .unwrap()
                             .denom
                             .to_string(),
                         amount: Uint128::from_str(
-                            &pool.pool_assets[0].token.as_ref().unwrap().amount,
+                            &gamm_pool.pool_assets[0].token.as_ref().unwrap().amount,
                         )
                         .unwrap(),
                     }
                     .into(),
                     Coin {
-                        denom: pool.pool_assets[1]
+                        denom: gamm_pool.pool_assets[1]
                             .token
                             .as_ref()
                             .unwrap()
                             .denom
                             .to_string(),
                         amount: Uint128::from_str(
-                            &pool.pool_assets[1].token.as_ref().unwrap().amount,
+                            &gamm_pool.pool_assets[1].token.as_ref().unwrap().amount,
                         )
                         .unwrap(),
                     }
@@ -266,8 +326,18 @@ pub mod initialize {
 
             pools.push(PoolWithDenoms {
                 pool: pool_id,
-                denom0: DENOM_BASE.to_string(),
-                denom1: DENOM_QUOTE.to_string(),
+                denom0: gamm_pool.pool_assets[0]
+                    .token
+                    .as_ref()
+                    .unwrap()
+                    .denom
+                    .to_string(),
+                denom1: gamm_pool.pool_assets[1]
+                    .token
+                    .as_ref()
+                    .unwrap()
+                    .denom
+                    .to_string(),
             })
         }
 
@@ -296,11 +366,8 @@ pub mod initialize {
     fn default_init_works() {
         let (app, contract_address, pools, admin) = default_init();
         let wasm = Wasm::new(&app);
-        let cl = ConcentratedLiquidity::new(&app);
-        let tf = TokenFactory::new(&app);
-        let pm = PoolManager::new(&app);
 
-        for pool in pools {
+        for pool in pools.clone() {
             let response = wasm
                 .execute(
                     &contract_address.to_string(),
@@ -322,9 +389,25 @@ pub mod initialize {
                     &admin,
                 )
                 .unwrap();
-
-            println!("SetPath Result: {:?}", response);
         }
+
+        let resp: BestPathForPairResponse = wasm
+            .query(
+                &contract_address.to_string(),
+                &QueryMsg::BestPathForPair {
+                    offer_asset: apollo_cw_asset::AssetInfoBase::Native(
+                        pools.first().unwrap().denom0.clone(),
+                    ),
+                    ask_asset: apollo_cw_asset::AssetInfoBase::Native(
+                        pools.first().unwrap().denom1.clone(),
+                    ),
+                    offer_amount: Uint128::from(1000u128),
+                    exclude_paths: None,
+                },
+            )
+            .unwrap();
+
+        println!("Best path: {:?}", resp);
     }
 
     // #[test]

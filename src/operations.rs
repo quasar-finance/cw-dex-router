@@ -33,14 +33,11 @@ pub type SwapOperation = SwapOperationBase<Addr>;
 
 impl SwapOperationUnchecked {
     pub fn check(&self, deps: Deps) -> Result<SwapOperation, ContractError> {
-        deps.api.debug("precheck swap");
-
         let op = SwapOperation {
             ask_asset_info: self.ask_asset_info.check(deps.api)?,
             offer_asset_info: self.offer_asset_info.check(deps.api)?,
             pool: self.pool.clone(),
         };
-        deps.api.debug("postcheck swap");
 
         // validate pool assets
         let pool_assets = op.pool.pool_assets(deps)?;
@@ -51,6 +48,7 @@ impl SwapOperationUnchecked {
         {
             Err(ContractError::InvalidSwapOperations {
                 operations: vec![op],
+                reason: "The pool does not support the assets in this operation".to_string(),
             })
         } else {
             Ok(op)
@@ -130,8 +128,6 @@ impl SwapOperationsListUnchecked {
             .map(|x| x.check(deps))
             .collect::<Result<Vec<_>, ContractError>>()?;
 
-        deps.api.debug("Post operations");
-
         if operations.is_empty() {
             return Err(ContractError::MustProvideOperations);
         }
@@ -139,12 +135,10 @@ impl SwapOperationsListUnchecked {
         let mut prev_ask_asset = operations.first().unwrap().ask_asset_info.clone();
         for operation in operations.iter().skip(1) {
             if operation.offer_asset_info != prev_ask_asset {
-                return Err(ContractError::InvalidSwapOperations { operations });
+                return Err(ContractError::InvalidSwapOperations { operations, reason: "The offer asset of an operation must be the same as the ask asset of the previous operation".to_string() });
             }
             prev_ask_asset = operation.ask_asset_info.clone();
         }
-
-        deps.api.debug("Post prevaskasset");
 
         // Check that the path never swaps through the same pool twice
         let mut unique_pools = vec![];
@@ -152,11 +146,12 @@ impl SwapOperationsListUnchecked {
             if !unique_pools.contains(&operation.pool) {
                 unique_pools.push(operation.pool.clone());
             } else {
-                return Err(ContractError::InvalidSwapOperations { operations });
+                return Err(ContractError::InvalidSwapOperations {
+                    operations,
+                    reason: "The path must not swap through the same pool twice".to_string(),
+                });
             }
         }
-
-        deps.api.debug("Post uniquepools");
 
         Ok(SwapOperationsListBase(operations))
     }
