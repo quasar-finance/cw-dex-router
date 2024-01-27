@@ -8,7 +8,7 @@ pub mod initialize {
     use osmosis_std::types::osmosis::concentratedliquidity::v1beta1::{
         CreateConcentratedLiquidityPoolsProposal, Pool, PoolRecord, PoolsRequest,
     };
-    use osmosis_std::types::osmosis::gamm::v1beta1::MsgJoinPool;
+    use osmosis_std::types::osmosis::gamm::v1beta1::{MsgJoinPool, MsgJoinPoolResponse};
     use osmosis_std::types::osmosis::poolmanager::v1beta1::PoolType;
     use osmosis_std::types::osmosis::poolmanager::v1beta1::{
         MsgSwapExactAmountIn, SpotPriceRequest, SwapAmountInRoute,
@@ -22,7 +22,6 @@ pub mod initialize {
 
     use osmosis_test_tube::osmosis_std::types::osmosis::gamm::poolmodels::balancer::v1beta1::MsgCreateBalancerPool;
     use osmosis_test_tube::osmosis_std::types::osmosis::gamm::v1beta1::PoolAsset;
-    use osmosis_test_tube::Gamm;
     use osmosis_test_tube::{
         cosmrs::proto::traits::Message,
         osmosis_std::types::osmosis::concentratedliquidity::{
@@ -31,6 +30,7 @@ pub mod initialize {
         Account, ConcentratedLiquidity, GovWithAppAccess, Module, OsmosisTestApp, PoolManager,
         SigningAccount, TokenFactory, Wasm,
     };
+    use osmosis_test_tube::{ExecuteResponse, Gamm, Runner};
 
     use crate::msg::{BestPathForPairResponse, ExecuteMsg, InstantiateMsg, QueryMsg};
     use crate::operations::{
@@ -43,6 +43,8 @@ pub mod initialize {
     const FEE_DENOM: &str = "uosmo";
     const DENOM_BASE: &str = "udydx";
     const DENOM_QUOTE: &str = "uryeth";
+    const INTERMEDIATE_BASE: &str = "uinshallah";
+    const INTERMEDIATE_QUOTE: &str = "wosmo";
     // const SUBDENOM_BASE: &str = "udydx";
     // const SUBDENOM_QUOTE: &str = "uryeth";
 
@@ -80,9 +82,29 @@ pub mod initialize {
                 &admin,
             )
             .unwrap();
+        let res2 = tf
+            .create_denom(
+                MsgCreateDenom {
+                    sender: admin.address().to_string(),
+                    subdenom: INTERMEDIATE_BASE.to_string(),
+                },
+                &admin,
+            )
+            .unwrap();
+        let res3 = tf
+            .create_denom(
+                MsgCreateDenom {
+                    sender: admin.address().to_string(),
+                    subdenom: INTERMEDIATE_QUOTE.to_string(),
+                },
+                &admin,
+            )
+            .unwrap();
 
         let denom0 = res0.data.new_token_denom;
         let denom1 = res1.data.new_token_denom;
+        let denom2 = res2.data.new_token_denom;
+        let denom3 = res3.data.new_token_denom;
 
         tf.mint(
             MsgMint {
@@ -102,6 +124,30 @@ pub mod initialize {
                 sender: admin.address().to_string(),
                 amount: Some(OsmoCoin {
                     denom: denom1.clone(),
+                    amount: ADMIN_BALANCE_AMOUNT.to_string(),
+                }),
+                mint_to_address: admin.address().to_string(),
+            },
+            &admin,
+        )
+        .unwrap();
+        tf.mint(
+            MsgMint {
+                sender: admin.address().to_string(),
+                amount: Some(OsmoCoin {
+                    denom: denom2.clone(),
+                    amount: ADMIN_BALANCE_AMOUNT.to_string(),
+                }),
+                mint_to_address: admin.address().to_string(),
+            },
+            &admin,
+        )
+        .unwrap();
+        tf.mint(
+            MsgMint {
+                sender: admin.address().to_string(),
+                amount: Some(OsmoCoin {
+                    denom: denom3.clone(),
                     amount: ADMIN_BALANCE_AMOUNT.to_string(),
                 }),
                 mint_to_address: admin.address().to_string(),
@@ -140,6 +186,58 @@ pub mod initialize {
                         token: Some(
                             Coin {
                                 denom: denom1.to_string(),
+                                amount: Uint128::from(1000000u128),
+                            }
+                            .into(),
+                        ),
+                    },
+                ],
+                future_pool_governor: "overwritten".to_string(),
+            }, MsgCreateBalancerPool {
+                sender: "overwritten".to_string(),
+                pool_params: None,
+                pool_assets: vec![
+                    PoolAsset {
+                        weight: "1".to_string(),
+                        token: Some(
+                            Coin {
+                                denom: denom0.to_string(),
+                                amount: Uint128::from(1000000u128),
+                            }
+                            .into(),
+                        ),
+                    },
+                    PoolAsset {
+                        weight: "1".to_string(),
+                        token: Some(
+                            Coin {
+                                denom: denom2.to_string(),
+                                amount: Uint128::from(1000000u128),
+                            }
+                            .into(),
+                        ),
+                    },
+                ],
+                future_pool_governor: "overwritten".to_string(),
+            }, MsgCreateBalancerPool {
+                sender: "overwritten".to_string(),
+                pool_params: None,
+                pool_assets: vec![
+                    PoolAsset {
+                        weight: "1".to_string(),
+                        token: Some(
+                            Coin {
+                                denom: denom1.to_string(),
+                                amount: Uint128::from(1000000u128),
+                            }
+                            .into(),
+                        ),
+                    },
+                    PoolAsset {
+                        weight: "1".to_string(),
+                        token: Some(
+                            Coin {
+                                denom: denom2.to_string(),
                                 amount: Uint128::from(1000000u128),
                             }
                             .into(),
@@ -288,12 +386,11 @@ pub mod initialize {
                 .value
                 .parse()
                 .unwrap();
-            // println!("Gamm pool Result: {:?} {:?}", response, pool_id);
 
             let add_liq = MsgJoinPool {
                 sender: admin.address().to_string(),
                 pool_id: pool_id.clone(),
-                share_out_amount: "1".to_string(),
+                share_out_amount: "100".to_string(),
                 token_in_maxs: vec![
                     Coin {
                         denom: gamm_pool.pool_assets[0]
@@ -323,6 +420,9 @@ pub mod initialize {
                     .into(),
                 ],
             };
+
+            // let _res: ExecuteResponse<MsgJoinPoolResponse> =
+            //     app.execute(add_liq, MsgJoinPool::TYPE_URL, &admin).unwrap();
 
             pools.push(PoolWithDenoms {
                 pool: pool_id,
@@ -401,12 +501,13 @@ pub mod initialize {
                     ask_asset: apollo_cw_asset::AssetInfoBase::Native(
                         pools.first().unwrap().denom1.clone(),
                     ),
-                    offer_amount: Uint128::from(1000u128),
+                    offer_amount: Uint128::from(100000000u128),
                     exclude_paths: None,
                 },
             )
             .unwrap();
 
+        // under the default setup, we expect
         println!("Best path: {:?}", resp);
     }
 

@@ -2,6 +2,8 @@ use cosmwasm_std::{Attribute, Coin};
 use osmosis_std::types::cosmwasm::wasm::v1::MsgExecuteContractResponse;
 use osmosis_test_tube::ExecuteResponse;
 
+pub fn create_cl_pool() {}
+
 pub fn get_event_attributes_by_ty_and_key(
     response: &ExecuteResponse<MsgExecuteContractResponse>,
     ty: &str,
