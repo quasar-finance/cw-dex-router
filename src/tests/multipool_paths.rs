@@ -1,43 +1,40 @@
 use std::str::FromStr;
 
-    use cosmwasm_schema::cw_serde;
-    use cosmwasm_std::{coin, Addr, Attribute, Coin, Decimal, Uint128};
-    use cw_dex::osmosis::OsmosisPool;
-    use osmosis_std::types::osmosis::concentratedliquidity::v1beta1::{
-        CreateConcentratedLiquidityPoolsProposal, Pool, PoolRecord, PoolsRequest,
-    };
-    use osmosis_std::types::osmosis::gamm::v1beta1::{MsgJoinPool, MsgJoinPoolResponse};
-    use osmosis_std::types::osmosis::poolmanager::v1beta1::PoolType;
-    use osmosis_std::types::osmosis::poolmanager::v1beta1::{
-        MsgSwapExactAmountIn, SpotPriceRequest, SwapAmountInRoute,
-    };
-    use osmosis_std::types::osmosis::tokenfactory::v1beta1::{
-        MsgCreateDenom, MsgMint, QueryDenomsFromCreatorRequest,
-    };
-    use osmosis_std::types::{
-        cosmos::base::v1beta1::Coin as OsmoCoin, osmosis::gamm::v1beta1::MsgExitSwapShareAmountIn,
-    };
+use cosmwasm_schema::cw_serde;
+use cosmwasm_std::{coin, Addr, Attribute, Coin, Decimal, Uint128};
+use cw_dex::osmosis::OsmosisPool;
+use osmosis_std::types::osmosis::concentratedliquidity::v1beta1::{
+    CreateConcentratedLiquidityPoolsProposal, Pool, PoolRecord, PoolsRequest,
+};
+use osmosis_std::types::osmosis::gamm::v1beta1::{MsgJoinPool, MsgJoinPoolResponse};
+use osmosis_std::types::osmosis::poolmanager::v1beta1::{
+    MsgSwapExactAmountIn, SpotPriceRequest, SwapAmountInRoute,
+};
+use osmosis_std::types::osmosis::poolmanager::v1beta1::{PoolRequest, PoolType};
+use osmosis_std::types::osmosis::tokenfactory::v1beta1::{
+    MsgCreateDenom, MsgMint, QueryDenomsFromCreatorRequest,
+};
+use osmosis_std::types::{
+    cosmos::base::v1beta1::Coin as OsmoCoin, osmosis::gamm::v1beta1::MsgExitSwapShareAmountIn,
+};
 
-    use osmosis_test_tube::osmosis_std::types::osmosis::gamm::poolmodels::balancer::v1beta1::MsgCreateBalancerPool;
-    use osmosis_test_tube::osmosis_std::types::osmosis::gamm::v1beta1::PoolAsset;
-    use osmosis_test_tube::{
-        cosmrs::proto::traits::Message,
-        osmosis_std::types::osmosis::concentratedliquidity::{
-            poolmodel::concentrated::v1beta1::MsgCreateConcentratedPool, v1beta1::MsgCreatePosition,
-        },
-        Account, ConcentratedLiquidity, GovWithAppAccess, Module, OsmosisTestApp, PoolManager,
-        SigningAccount, TokenFactory, Wasm,
-    };
-    use osmosis_test_tube::{ExecuteResponse, Gamm, Runner};
+use osmosis_test_tube::osmosis_std::types::osmosis::gamm::poolmodels::balancer::v1beta1::MsgCreateBalancerPool;
+use osmosis_test_tube::osmosis_std::types::osmosis::gamm::v1beta1::PoolAsset;
+use osmosis_test_tube::{
+    cosmrs::proto::traits::Message,
+    osmosis_std::types::osmosis::concentratedliquidity::{
+        poolmodel::concentrated::v1beta1::MsgCreateConcentratedPool, v1beta1::MsgCreatePosition,
+    },
+    Account, ConcentratedLiquidity, GovWithAppAccess, Module, OsmosisTestApp, PoolManager,
+    SigningAccount, TokenFactory, Wasm,
+};
+use osmosis_test_tube::{Bank, ExecuteResponse, Gamm, Runner};
 
-    use crate::msg::{BestPathForPairResponse, ExecuteMsg, InstantiateMsg, QueryMsg};
-    use crate::operations::{
-        SwapOperationBase, SwapOperationsListBase, SwapOperationsListUnchecked,
-    };
-    use crate::tests::helpers::{get_event_attributes_by_ty_and_key, sort_tokens};
+use crate::msg::{BestPathForPairResponse, ExecuteMsg, InstantiateMsg, QueryMsg};
+use crate::operations::{SwapOperationBase, SwapOperationsListBase, SwapOperationsListUnchecked};
+use crate::tests::helpers::{get_event_attributes_by_ty_and_key, sort_tokens};
 
-    use super::initialize::*;
-
+use super::initialize::*;
 
 pub fn multiple_pool_init() -> (OsmosisTestApp, Addr, Vec<PoolWithDenoms>, SigningAccount) {
     let app = OsmosisTestApp::new();
@@ -151,85 +148,89 @@ pub fn multiple_pool_init() -> (OsmosisTestApp, Addr, Vec<PoolWithDenoms>, Signi
             tick_spacing: 100,
             spread_factor: Decimal::from_str("0.01").unwrap().atomics().to_string(),
         }],
-        vec![MsgCreateBalancerPool {
-            sender: "overwritten".to_string(),
-            pool_params: None,
-            pool_assets: vec![
-                PoolAsset {
-                    weight: "1".to_string(),
-                    token: Some(
-                        Coin {
-                            denom: denom0.to_string(),
-                            amount: Uint128::from(1000000u128),
-                        }
-                        .into(),
-                    ),
-                },
-                PoolAsset {
-                    weight: "1".to_string(),
-                    token: Some(
-                        Coin {
-                            denom: denom1.to_string(),
-                            amount: Uint128::from(1000000u128),
-                        }
-                        .into(),
-                    ),
-                },
-            ],
-            future_pool_governor: "overwritten".to_string(),
-        }, MsgCreateBalancerPool {
-            sender: "overwritten".to_string(),
-            pool_params: None,
-            pool_assets: vec![
-                PoolAsset {
-                    weight: "1".to_string(),
-                    token: Some(
-                        Coin {
-                            denom: denom0.to_string(),
-                            amount: Uint128::from(1000000u128),
-                        }
-                        .into(),
-                    ),
-                },
-                PoolAsset {
-                    weight: "1".to_string(),
-                    token: Some(
-                        Coin {
-                            denom: denom2.to_string(),
-                            amount: Uint128::from(1000000u128),
-                        }
-                        .into(),
-                    ),
-                },
-            ],
-            future_pool_governor: "overwritten".to_string(),
-        }, MsgCreateBalancerPool {
-            sender: "overwritten".to_string(),
-            pool_params: None,
-            pool_assets: vec![
-                PoolAsset {
-                    weight: "1".to_string(),
-                    token: Some(
-                        Coin {
-                            denom: denom1.to_string(),
-                            amount: Uint128::from(1000000u128),
-                        }
-                        .into(),
-                    ),
-                },
-                PoolAsset {
-                    weight: "1".to_string(),
-                    token: Some(
-                        Coin {
-                            denom: denom2.to_string(),
-                            amount: Uint128::from(1000000u128),
-                        }
-                        .into(),
-                    ),
-                },
-            ],
-            future_pool_governor: "overwritten".to_string(),
-        }],
+        vec![
+            MsgCreateBalancerPool {
+                sender: "overwritten".to_string(),
+                pool_params: None,
+                pool_assets: vec![
+                    PoolAsset {
+                        weight: "1".to_string(),
+                        token: Some(
+                            Coin {
+                                denom: denom0.to_string(),
+                                amount: Uint128::from(1000000u128),
+                            }
+                            .into(),
+                        ),
+                    },
+                    PoolAsset {
+                        weight: "1".to_string(),
+                        token: Some(
+                            Coin {
+                                denom: denom1.to_string(),
+                                amount: Uint128::from(1000000u128),
+                            }
+                            .into(),
+                        ),
+                    },
+                ],
+                future_pool_governor: "overwritten".to_string(),
+            },
+            MsgCreateBalancerPool {
+                sender: "overwritten".to_string(),
+                pool_params: None,
+                pool_assets: vec![
+                    PoolAsset {
+                        weight: "1".to_string(),
+                        token: Some(
+                            Coin {
+                                denom: denom0.to_string(),
+                                amount: Uint128::from(1000000u128),
+                            }
+                            .into(),
+                        ),
+                    },
+                    PoolAsset {
+                        weight: "1".to_string(),
+                        token: Some(
+                            Coin {
+                                denom: denom2.to_string(),
+                                amount: Uint128::from(1000000u128),
+                            }
+                            .into(),
+                        ),
+                    },
+                ],
+                future_pool_governor: "overwritten".to_string(),
+            },
+            MsgCreateBalancerPool {
+                sender: "overwritten".to_string(),
+                pool_params: None,
+                pool_assets: vec![
+                    PoolAsset {
+                        weight: "1".to_string(),
+                        token: Some(
+                            Coin {
+                                denom: denom1.to_string(),
+                                amount: Uint128::from(1000000u128),
+                            }
+                            .into(),
+                        ),
+                    },
+                    PoolAsset {
+                        weight: "1".to_string(),
+                        token: Some(
+                            Coin {
+                                denom: denom2.to_string(),
+                                amount: Uint128::from(1000000u128),
+                            }
+                            .into(),
+                        ),
+                    },
+                ],
+                future_pool_governor: "overwritten".to_string(),
+            },
+        ],
     )
 }
 
@@ -375,7 +376,7 @@ pub fn init_test_contract(
             sender: admin.address().to_string(),
             pool_id: pool_id.clone(),
             share_out_amount: "100".to_string(),
-            token_in_maxs: vec![
+            token_in_maxs: sort_tokens(vec![
                 Coin {
                     denom: gamm_pool.pool_assets[0]
                         .token
@@ -387,8 +388,7 @@ pub fn init_test_contract(
                         &gamm_pool.pool_assets[0].token.as_ref().unwrap().amount,
                     )
                     .unwrap(),
-                }
-                .into(),
+                },
                 Coin {
                     denom: gamm_pool.pool_assets[1]
                         .token
@@ -400,13 +400,18 @@ pub fn init_test_contract(
                         &gamm_pool.pool_assets[1].token.as_ref().unwrap().amount,
                     )
                     .unwrap(),
-                }
-                .into(),
-            ],
+                },
+            ])
+            .iter()
+            .map(|c| OsmoCoin {
+                denom: c.denom.clone(),
+                amount: c.amount.to_string(),
+            })
+            .collect(),
         };
 
-        // let _res: ExecuteResponse<MsgJoinPoolResponse> =
-        //     app.execute(add_liq, MsgJoinPool::TYPE_URL, &admin).unwrap();
+        let _res: ExecuteResponse<MsgJoinPoolResponse> =
+            app.execute(add_liq, MsgJoinPool::TYPE_URL, &admin).unwrap();
 
         pools.push(PoolWithDenoms {
             pool: pool_id,
@@ -436,7 +441,6 @@ pub fn init_test_contract(
             &admin,
         )
         .unwrap();
-
     // // Sort tokens alphabetically by denom name or Osmosis will return an error
     // tokens_provided.sort_by(|a, b| a.denom.cmp(&b.denom)); // can't use helpers.rs::sort_tokens() due to different Coin type
 
@@ -446,15 +450,17 @@ pub fn init_test_contract(
     (app, Addr::unchecked(contract.data.address), pools, admin)
 }
 
-
 #[test]
 fn multiple_pools_work() {
     let (app, contract_address, pools, admin) = multiple_pool_init();
     let wasm = Wasm::new(&app);
 
-    let alice = app.init_account(
-        &[Coin::new(100_000_000u128, DENOM_BASE), Coin::new(ADMIN_BALANCE_AMOUNT, FEE_DENOM)]
-    ).unwrap();
+    let alice = app
+        .init_account(&[
+            Coin::new(100_000_000u128, DENOM_BASE),
+            Coin::new(ADMIN_BALANCE_AMOUNT, FEE_DENOM),
+        ])
+        .unwrap();
 
     for pool in pools.clone() {
         let response = wasm
@@ -468,8 +474,7 @@ fn multiple_pools_work() {
                         offer_asset_info: apollo_cw_asset::AssetInfoBase::Native(
                             pool.denom0.clone(),
                         ),
-                        ask_asset_info: apollo_cw_asset::AssetInfoBase::Native(pool.denom1)
-                            .clone(),
+                        ask_asset_info: apollo_cw_asset::AssetInfoBase::Native(pool.denom1).clone(),
                     }])
                     .into(),
                     bidirectional: true,
@@ -490,22 +495,43 @@ fn multiple_pools_work() {
                 ask_asset: apollo_cw_asset::AssetInfoBase::Native(
                     pools.first().unwrap().denom1.clone(),
                 ),
-                offer_amount: Uint128::from(100000000u128),
+                offer_amount: Uint128::from(10000u128),
                 exclude_paths: None,
             },
         )
         .unwrap();
 
-        let mut iter = resp.operations.clone().into_iter();
-        // the first swap should be over pool 1
-        assert_eq!(iter.next().unwrap().pool, cw_dex::Pool::Osmosis(OsmosisPool::unchecked(1)));
-        assert!(iter.next().is_none());
+    println!(
+        "operationS: {:?} going from {:?} to {:?}",
+        resp.operations,
+        pools.first().unwrap().denom0.clone(),
+        pools.first().unwrap().denom1.clone()
+    );
 
-        let resp = wasm
+    let poolManager = PoolManager::new(&app);
+    let pool_resp = poolManager.query_pool(&PoolRequest { pool_id: 1 }).unwrap();
+    let pool = Pool::decode(pool_resp.pool.unwrap().value.as_ref()).unwrap();
+    println!("pool: {:?}", pool);
+
+    let mut iter = resp.operations.clone().into_iter();
+    // the first swap should be over pool 1
+    assert_eq!(
+        iter.next().unwrap().pool,
+        cw_dex::Pool::Osmosis(OsmosisPool::unchecked(1))
+    );
+    assert!(iter.next().is_none());
+
+    let resp = wasm
         .execute(
             &contract_address.to_string(),
-            &ExecuteMsg::ExecuteSwapOperations { operations: resp.operations.into(), offer_amount: None, minimum_receive: Some(Uint128::one()), to: None },
-            &[Coin::new(100000000u128, DENOM_BASE)],
-            &alice
-        ).unwrap();
+            &ExecuteMsg::ExecuteSwapOperations {
+                operations: resp.operations.into(),
+                offer_amount: None,
+                minimum_receive: Some(Uint128::one()),
+                to: None,
+            },
+            &[Coin::new(10000u128, pools.first().unwrap().denom0.clone())],
+            &admin,
+        )
+        .unwrap();
 }

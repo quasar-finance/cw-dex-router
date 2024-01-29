@@ -41,8 +41,6 @@ impl SwapOperationUnchecked {
 
         // validate pool assets
         let pool_assets = op.pool.pool_assets(deps)?;
-        deps.api
-            .debug(&format!("postcheck pool assets: {:?}", pool_assets));
 
         if !pool_assets.contains(&op.offer_asset_info) || !pool_assets.contains(&op.ask_asset_info)
         {
