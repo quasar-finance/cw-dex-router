@@ -1,5 +1,4 @@
-#[cfg(test)]
-pub mod initialize {
+
     use std::str::FromStr;
 
     use cosmwasm_schema::cw_serde;
@@ -36,23 +35,21 @@ pub mod initialize {
     use crate::operations::{
         SwapOperationBase, SwapOperationsListBase, SwapOperationsListUnchecked,
     };
-    use crate::test_tube::helpers::{get_event_attributes_by_ty_and_key, sort_tokens};
+    use crate::tests::helpers::{get_event_attributes_by_ty_and_key, sort_tokens};
 
-    const ADMIN_BALANCE_AMOUNT: u128 = 3402823669209384634633746074317682114u128;
-    const TOKENS_PROVIDED_AMOUNT: &str = "1000000000000";
-    const FEE_DENOM: &str = "uosmo";
-    const DENOM_BASE: &str = "udydx";
-    const DENOM_QUOTE: &str = "uryeth";
-    const INTERMEDIATE_BASE: &str = "uinshallah";
-    const INTERMEDIATE_QUOTE: &str = "wosmo";
-    // const SUBDENOM_BASE: &str = "udydx";
-    // const SUBDENOM_QUOTE: &str = "uryeth";
+    pub(crate) const ADMIN_BALANCE_AMOUNT: u128 = 3402823669209384634633746074317682114u128;
+    pub(crate) const TOKENS_PROVIDED_AMOUNT: &str = "1000000000000";
+    pub(crate) const FEE_DENOM: &str = "uosmo";
+    pub(crate) const DENOM_BASE: &str = "udydx";
+    pub(crate) const DENOM_QUOTE: &str = "uryeth";
+    pub(crate) const INTERMEDIATE_BASE: &str = "uinshallah";
+    pub(crate) const INTERMEDIATE_QUOTE: &str = "wosmo";
 
     #[cw_serde]
     pub struct PoolWithDenoms {
-        pool: u64,
-        denom0: String,
-        denom1: String,
+        pub pool: u64,
+        pub denom0: String,
+        pub denom1: String,
     }
 
     pub fn default_init() -> (OsmosisTestApp, Addr, Vec<PoolWithDenoms>, SigningAccount) {
@@ -507,93 +504,8 @@ pub mod initialize {
             )
             .unwrap();
 
-        // under the default setup, we expect
-        println!("Best path: {:?}", resp);
+        let mut iter = resp.operations.into_iter();
+        // under the default setup, we expect the best path to route over pool 1
+        assert_eq!(iter.next().unwrap().pool, cw_dex::Pool::Osmosis(OsmosisPool::unchecked(1)));
+        assert!(iter.next().is_none());
     }
-
-    // #[test]
-    // #[ignore]
-    // fn default_init_works() {
-    //     let (app, contract_address, cl_pool_id, admin) = default_init();
-    //     let wasm = Wasm::new(&app);
-    //     let cl = ConcentratedLiquidity::new(&app);
-    //     let tf = TokenFactory::new(&app);
-    //     let pm = PoolManager::new(&app);
-
-    //     let pools = cl.query_pools(&PoolsRequest { pagination: None }).unwrap();
-    //     let pool = Pool::decode(pools.pools[0].value.as_slice()).unwrap();
-
-    //     let resp = wasm
-    //         .query::<QueryMsg, PoolResponse>(
-    //             contract_address.as_str(),
-    //             &QueryMsg::VaultExtension(ExtensionQueryMsg::ConcentratedLiquidity(
-    //                 ClQueryMsg::Pool {},
-    //             )),
-    //         )
-    //         .unwrap();
-
-    //     assert_eq!(resp.pool_config.pool_id, pool.id);
-    //     assert_eq!(resp.pool_config.token0, pool.token0);
-    //     assert_eq!(resp.pool_config.token1, pool.token1);
-
-    //     let resp = wasm
-    //         .query::<QueryMsg, VaultInfoResponse>(contract_address.as_str(), &QueryMsg::Info {})
-    //         .unwrap();
-
-    //     assert_eq!(resp.tokens, vec![pool.token0, pool.token1]);
-    //     assert_eq!(
-    //         resp.vault_token,
-    //         tf.query_denoms_from_creator(&QueryDenomsFromCreatorRequest {
-    //             creator: contract_address.to_string()
-    //         })
-    //         .unwrap()
-    //         .denoms[0]
-    //     );
-
-    //     // Create Alice account
-    //     let alice = app
-    //         .init_account(&[
-    //             Coin::new(1_000_000_000_000, DENOM_BASE),
-    //             Coin::new(1_000_000_000_000, DENOM_QUOTE),
-    //         ])
-    //         .unwrap();
-
-    //     // Swap some funds as Alice to move the pool's curent tick
-    //     pm.swap_exact_amount_in(
-    //         MsgSwapExactAmountIn {
-    //             sender: alice.address(),
-    //             routes: vec![SwapAmountInRoute {
-    //                 pool_id: cl_pool_id,
-    //                 token_out_denom: DENOM_BASE.to_string(),
-    //             }],
-    //             token_in: Some(v1beta1::Coin {
-    //                 denom: DENOM_QUOTE.to_string(),
-    //                 amount: "1000".to_string(),
-    //             }),
-    //             token_out_min_amount: "1".to_string(),
-    //         },
-    //         &alice,
-    //     )
-    //     .unwrap();
-
-    //     // Increment the app time for twaps to function
-    //     app.increase_time(1000000);
-
-    //     // Update range of vault as Admin
-    //     wasm.execute(
-    //         contract_address.as_str(),
-    //         &ExecuteMsg::VaultExtension(crate::msg::ExtensionExecuteMsg::ModifyRange(
-    //             ModifyRangeMsg {
-    //                 lower_price: Decimal::from_str("0.993").unwrap(),
-    //                 upper_price: Decimal::from_str("1.002").unwrap(),
-    //                 max_slippage: Decimal::bps(9500),
-    //                 ratio_of_swappable_funds_to_use: Decimal::one(),
-    //                 twap_window_seconds: 45,
-    //             },
-    //         )),
-    //         &[],
-    //         &admin,
-    //     )
-    //     .unwrap();
-    // }
-}

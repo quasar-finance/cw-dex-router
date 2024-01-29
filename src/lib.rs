@@ -8,4 +8,4 @@ pub mod state;
 pub use crate::error::ContractError;
 
 #[cfg(test)]
-mod test_tube;
+mod tests;
