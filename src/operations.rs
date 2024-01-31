@@ -38,12 +38,15 @@ impl SwapOperationUnchecked {
             offer_asset_info: self.offer_asset_info.check(deps.api)?,
             pool: self.pool.clone(),
         };
+
         // validate pool assets
         let pool_assets = op.pool.pool_assets(deps)?;
+
         if !pool_assets.contains(&op.offer_asset_info) || !pool_assets.contains(&op.ask_asset_info)
         {
             Err(ContractError::InvalidSwapOperations {
                 operations: vec![op],
+                reason: "The pool does not support the assets in this operation".to_string(),
             })
         } else {
             Ok(op)
@@ -130,7 +133,7 @@ impl SwapOperationsListUnchecked {
         let mut prev_ask_asset = operations.first().unwrap().ask_asset_info.clone();
         for operation in operations.iter().skip(1) {
             if operation.offer_asset_info != prev_ask_asset {
-                return Err(ContractError::InvalidSwapOperations { operations });
+                return Err(ContractError::InvalidSwapOperations { operations, reason: "The offer asset of an operation must be the same as the ask asset of the previous operation".to_string() });
             }
             prev_ask_asset = operation.ask_asset_info.clone();
         }
@@ -141,7 +144,10 @@ impl SwapOperationsListUnchecked {
             if !unique_pools.contains(&operation.pool) {
                 unique_pools.push(operation.pool.clone());
             } else {
-                return Err(ContractError::InvalidSwapOperations { operations });
+                return Err(ContractError::InvalidSwapOperations {
+                    operations,
+                    reason: "The path must not swap through the same pool twice".to_string(),
+                });
             }
         }
 

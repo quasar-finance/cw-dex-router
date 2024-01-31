@@ -257,6 +257,7 @@ pub fn set_path(
     if path.from() != offer_asset || path.to() != ask_asset {
         return Err(ContractError::InvalidSwapOperations {
             operations: path.into(),
+            reason: "The path does not match the offer and ask assets".to_string(),
         });
     }
 
@@ -482,8 +483,13 @@ pub fn query_best_path_for_pair(
     let excluded = exclude_paths.unwrap_or(vec![]);
     let paths: Vec<(u64, SwapOperationsList)> = paths
         .into_iter()
-        .filter(|(id, _)| excluded.contains(id))
+        .filter(|(id, _)| !excluded.contains(id))
         .collect();
+
+    if paths.is_empty() {
+        return Err(ContractError::NoPathsToCheck {});
+    }
+
     let swap_paths: Result<Vec<BestPathForPairResponse>, ContractError> = paths
         .into_iter()
         .map(|(id, swaps)| {
