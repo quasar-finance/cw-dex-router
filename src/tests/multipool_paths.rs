@@ -534,4 +534,5 @@ fn multiple_pools_work() {
             &admin,
         )
         .unwrap();
+    println!("{:?}", resp.data);
 }

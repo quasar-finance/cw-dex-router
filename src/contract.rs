@@ -2,19 +2,19 @@ use apollo_cw_asset::{Asset, AssetInfo, AssetInfoUnchecked};
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    from_json, to_json_binary, Addr, Binary, CosmosMsg, Deps, DepsMut, Env, Event, MessageInfo,
-    Order, Response, StdError, StdResult, Uint128,
+    from_json, to_json_binary, Addr, Binary, CosmosMsg, Deps, DepsMut, Env, Event, MessageInfo, Order, Reply, Response, StdError, StdResult, SubMsg, SubMsgResult, Uint128
 };
 use cw2::set_contract_version;
 use cw20::Cw20ReceiveMsg;
+use osmosis_std::types::osmosis::poolmanager::v1beta1::MsgSwapExactAmountInResponse;
 
 use crate::error::ContractError;
 use crate::helpers::receive_asset;
 use crate::msg::{
-    BestPathForPairResponse, CallbackMsg, Cw20HookMsg, ExecuteMsg, InstantiateMsg, MigrateMsg,
-    QueryMsg,
+    BestPathForPairResponse, CallbackMsg, Cw20HookMsg, ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg
 };
 use crate::operations::{SwapOperation, SwapOperationsList, SwapOperationsListUnchecked};
+use crate::reply::Replies;
 use crate::state::{ADMIN, PATHS};
 
 const CONTRACT_NAME: &str = "crates.io:cw-dex-router";
@@ -177,26 +177,30 @@ pub fn execute_swap_operations(
             &env,
             &Asset::new(offer_asset_info, offer_amount),
         )?);
-    };
+    }
+
+    msgs.extend(operations.into_execute_msgs(&env, recipient.clone())?);
 
     // 2. Loop and execute swap operations
-    let mut msgs: Vec<CosmosMsg> = operations.into_execute_msgs(&env, recipient.clone())?;
+    let mut response = Response::new().add_messages(msgs);
 
     // 3. Assert min receive
     if let Some(minimum_receive) = minimum_receive {
         let recipient_balance =
             target_asset_info.query_balance(&deps.querier, recipient.clone())?;
-        msgs.push(
-            CallbackMsg::AssertMinimumReceive {
-                asset_info: target_asset_info,
-                prev_balance: recipient_balance,
-                minimum_receive,
-                recipient,
-            }
-            .into_cosmos_msg(&env)?,
-        );
+
+        let assert_msg = CallbackMsg::AssertMinimumReceive {
+            asset_info: target_asset_info,
+            prev_balance: recipient_balance,
+            minimum_receive,
+            recipient,
+        }
+        .into_cosmos_msg(&env)?;
+
+        response = response.add_submessage(SubMsg::reply_on_success(assert_msg, Replies::AssertMinimumReceive.into()));
     }
-    Ok(Response::new().add_messages(msgs))
+
+    Ok(response)
 }
 
 pub fn execute_swap_operation(
@@ -238,7 +242,18 @@ pub fn assert_minimum_receive(
     if received_amount < minimum_receive {
         return Err(ContractError::FailedMinimumReceive);
     }
-    Ok(Response::default())
+
+    let response_msg = MsgSwapExactAmountInResponse {
+        token_out_amount: received_amount.to_string(),
+    };
+
+    let data = to_json_binary(&response_msg)?;
+
+    Ok(Response::new()
+        .add_attribute("method", "assert_minimum_receive")
+        .add_attribute("received_amount", received_amount.to_string())
+        .add_attribute("minimum_required_amount", minimum_receive.to_string())
+        .set_data(data))
 }
 
 pub fn set_path(
@@ -532,6 +547,27 @@ pub fn query_supported_ask_assets(
         }
     }
     Ok(ask_assets)
+}
+
+#[cfg_attr(not(feature = "library"), entry_point)]
+pub fn reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, ContractError> {
+    match msg.id.into() {
+        Replies::AssertMinimumReceive => handle_assert_minimum_receive_reply(deps, env, msg.result),
+        Replies::Unknown => unimplemented!(),
+    }
+}
+
+pub fn handle_assert_minimum_receive_reply(
+    _deps: DepsMut,
+    _env: Env,
+    msg: SubMsgResult,
+) -> Result<Response, ContractError> {
+    let response: MsgSwapExactAmountInResponse = msg.try_into()?;
+
+    // Create and return the response
+    Ok(Response::new()
+        .add_attribute("method", "execute_swap_operations")
+        .add_attribute("token_out_amount", response.token_out_amount))
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
