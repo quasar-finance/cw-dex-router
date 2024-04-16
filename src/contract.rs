@@ -2,16 +2,17 @@ use apollo_cw_asset::{Asset, AssetInfo, AssetInfoUnchecked};
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    from_json, to_json_binary, Addr, Binary, CosmosMsg, Deps, DepsMut, Env, Event, MessageInfo, Order, Reply, Response, StdError, StdResult, SubMsg, SubMsgResult, Uint128
+    from_json, to_json_binary, Addr, Binary, CosmosMsg, Deps, DepsMut, Env, Event, MessageInfo,
+    Order, Reply, Response, StdError, StdResult, SubMsg, SubMsgResult, Uint128,
 };
 use cw2::set_contract_version;
 use cw20::Cw20ReceiveMsg;
-use osmosis_std::types::osmosis::poolmanager::v1beta1::MsgSwapExactAmountInResponse;
 
 use crate::error::ContractError;
 use crate::helpers::receive_asset;
 use crate::msg::{
-    BestPathForPairResponse, CallbackMsg, Cw20HookMsg, ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg
+    BestPathForPairResponse, CallbackMsg, Cw20HookMsg, ExecuteMsg, InstantiateMsg, MigrateMsg,
+    MsgSwapExactAmountInResponse, QueryMsg,
 };
 use crate::operations::{SwapOperation, SwapOperationsList, SwapOperationsListUnchecked};
 use crate::reply::Replies;
@@ -197,7 +198,10 @@ pub fn execute_swap_operations(
         }
         .into_cosmos_msg(&env)?;
 
-        response = response.add_submessage(SubMsg::reply_on_success(assert_msg, Replies::AssertMinimumReceive.into()));
+        response = response.add_submessage(SubMsg::reply_on_success(
+            assert_msg,
+            Replies::AssertMinimumReceive.into(),
+        ));
     }
 
     Ok(response)
@@ -560,11 +564,25 @@ pub fn reply(deps: DepsMut, env: Env, msg: Reply) -> Result<Response, ContractEr
 pub fn handle_assert_minimum_receive_reply(
     _deps: DepsMut,
     _env: Env,
-    msg: SubMsgResult,
+    result: SubMsgResult,
 ) -> Result<Response, ContractError> {
-    let response: MsgSwapExactAmountInResponse = msg.try_into()?;
+    //let response: MsgSwapExactAmountInResponse = result.unwrap().data.unwrap().try_into()?;
 
-    // Create and return the response
+    let data = match result {
+        SubMsgResult::Ok(response) => response.data.ok_or_else(|| {
+            ContractError::Std(StdError::GenericErr {
+                msg: "No data found in reply.".to_string(),
+            })
+        })?,
+        SubMsgResult::Err(err) => {
+            return Err(ContractError::Std(StdError::GenericErr {
+                msg: format!("Unexpected error in reply handler: {}", err),
+            }))
+        }
+    };
+
+    let response: MsgSwapExactAmountInResponse = data.try_into()?;
+
     Ok(Response::new()
         .add_attribute("method", "execute_swap_operations")
         .add_attribute("token_out_amount", response.token_out_amount))

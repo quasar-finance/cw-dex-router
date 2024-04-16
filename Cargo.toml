@@ -58,9 +58,10 @@ cw2 = "1.1.2"
 cw20 = "1.1.2"
 thiserror = "1.0.38"
 num_enum = "0.7.2"
-osmosis-std = "0.22.0"
+serde-json-wasm = "1.0.1"
 
 [dev-dependencies]
 cw-it = {git = "https://github.com/apollodao/cw-it.git", rev = "1a3eea575ef82e71460db7296a9e0b5ffa98dcff"}
 osmosis-test-tube = "22.1.0"
+osmosis-std = "0.22.0"
 test-case = "3.0.0"

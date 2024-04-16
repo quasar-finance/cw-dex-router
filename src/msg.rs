@@ -1,6 +1,6 @@
 use apollo_cw_asset::{AssetInfo, AssetInfoUnchecked};
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{wasm_execute, Addr, CosmosMsg, Empty, Env, Uint128};
+use cosmwasm_std::{wasm_execute, Addr, Binary, CosmosMsg, Empty, Env, StdError, Uint128};
 use cw20::Cw20ReceiveMsg;
 
 use crate::operations::{SwapOperation, SwapOperationsListUnchecked};
@@ -118,3 +118,17 @@ pub enum QueryMsg {
 
 #[cw_serde]
 pub struct MigrateMsg {}
+
+#[cw_serde]
+pub struct MsgSwapExactAmountInResponse {
+    pub token_out_amount: String,
+}
+
+impl TryFrom<Binary> for MsgSwapExactAmountInResponse {
+    type Error = StdError;
+
+    fn try_from(value: Binary) -> Result<Self, Self::Error> {
+        serde_json_wasm::from_slice(value.as_slice())
+            .map_err(|err| StdError::generic_err(format!("Failed to deserialize: {}", err)))
+    }
+}
