@@ -49,8 +49,8 @@ builds = [
 [dependencies]
 apollo-cw-asset = "0.1.0"
 apollo-utils = "0.1.0"
-cosmwasm-schema = "1.2.1"
-cosmwasm-std = "1.2.1"
+cosmwasm-schema = "1.5.4"
+cosmwasm-std = "1.5.4"
 cw-controllers = "1.0.1"
 cw-dex = {git = "https://github.com/quasar-finance/cw-dex", branch = "feat/deprecate-osmo-gamm"}
 cw-storage-plus = "1.0.1"
