@@ -1,5 +1,5 @@
 use apollo_cw_asset::Asset;
-use cosmwasm_std::{Coin, OverflowError, StdError};
+use cosmwasm_std::{OverflowError, StdError};
 use cw_controllers::AdminError;
 use cw_dex::CwDexError;
 use thiserror::Error;
@@ -42,7 +42,7 @@ pub enum ContractError {
     NoPathsToCheck,
 
     #[error("Did not receive minimum amount, wanted: {wanted}, got: {got}")]
-    FailedMinimumReceive {wanted: Asset, got: Asset},
+    FailedMinimumReceive { wanted: Asset, got: Asset },
 
     #[error("No path found for assets {offer:?} -> {ask:?}")]
     NoPathFound { offer: String, ask: String },
