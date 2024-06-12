@@ -1,22 +1,15 @@
 use std::str::FromStr;
 
-use cosmwasm_schema::cw_serde;
-use cosmwasm_std::{coin, Addr, Attribute, Coin, Decimal, Uint128};
+use cosmwasm_std::{Addr, Attribute, Coin, Decimal, Uint128};
 use cw_dex::osmosis::OsmosisPool;
+use osmosis_std::types::cosmos::base::v1beta1::Coin as OsmoCoin;
 use osmosis_std::types::osmosis::concentratedliquidity::v1beta1::{
     CreateConcentratedLiquidityPoolsProposal, Pool, PoolRecord, PoolsRequest,
 };
 use osmosis_std::types::osmosis::gamm::v1beta1::{MsgJoinPool, MsgJoinPoolResponse};
-use osmosis_std::types::osmosis::poolmanager::v1beta1::{
-    MsgSwapExactAmountIn, SpotPriceRequest, SwapAmountInRoute,
-};
-use osmosis_std::types::osmosis::poolmanager::v1beta1::{PoolRequest, PoolType};
-use osmosis_std::types::osmosis::tokenfactory::v1beta1::{
-    MsgCreateDenom, MsgMint, QueryDenomsFromCreatorRequest,
-};
-use osmosis_std::types::{
-    cosmos::base::v1beta1::Coin as OsmoCoin, osmosis::gamm::v1beta1::MsgExitSwapShareAmountIn,
-};
+use osmosis_std::types::osmosis::poolmanager::v1beta1::PoolRequest;
+use osmosis_std::types::osmosis::poolmanager::v1beta1::SpotPriceRequest;
+use osmosis_std::types::osmosis::tokenfactory::v1beta1::{MsgCreateDenom, MsgMint};
 
 use osmosis_test_tube::osmosis_std::types::osmosis::gamm::poolmodels::balancer::v1beta1::MsgCreateBalancerPool;
 use osmosis_test_tube::osmosis_std::types::osmosis::gamm::v1beta1::PoolAsset;
@@ -28,11 +21,11 @@ use osmosis_test_tube::{
     Account, ConcentratedLiquidity, GovWithAppAccess, Module, OsmosisTestApp, PoolManager,
     SigningAccount, TokenFactory, Wasm,
 };
-use osmosis_test_tube::{Bank, ExecuteResponse, Gamm, Runner};
+use osmosis_test_tube::{ExecuteResponse, Gamm, Runner};
 
 use crate::msg::{BestPathForPairResponse, ExecuteMsg, InstantiateMsg, QueryMsg};
-use crate::operations::{SwapOperationBase, SwapOperationsListBase, SwapOperationsListUnchecked};
-use crate::tests::helpers::{get_event_attributes_by_ty_and_key, sort_tokens};
+use crate::operations::{SwapOperationBase, SwapOperationsListUnchecked};
+use crate::tests::helpers::sort_tokens;
 
 use super::initialize::*;
 
@@ -455,7 +448,7 @@ fn multiple_pools_work() {
     let (app, contract_address, pools, admin) = multiple_pool_init();
     let wasm = Wasm::new(&app);
 
-    let alice = app
+    let _ = app
         .init_account(&[
             Coin::new(100_000_000u128, DENOM_BASE),
             Coin::new(ADMIN_BALANCE_AMOUNT, FEE_DENOM),
@@ -463,7 +456,7 @@ fn multiple_pools_work() {
         .unwrap();
 
     for pool in pools.clone() {
-        let response = wasm
+        let _ = wasm
             .execute(
                 &contract_address.to_string(),
                 &ExecuteMsg::SetPath {
@@ -508,8 +501,10 @@ fn multiple_pools_work() {
         pools.first().unwrap().denom1.clone()
     );
 
-    let poolManager = PoolManager::new(&app);
-    let pool_resp = poolManager.query_pool(&PoolRequest { pool_id: 1 }).unwrap();
+    let pool_manager = PoolManager::new(&app);
+    let pool_resp = pool_manager
+        .query_pool(&PoolRequest { pool_id: 1 })
+        .unwrap();
     let pool = Pool::decode(pool_resp.pool.unwrap().value.as_ref()).unwrap();
     println!("pool: {:?}", pool);
 
@@ -521,7 +516,7 @@ fn multiple_pools_work() {
     );
     assert!(iter.next().is_none());
 
-    let resp = wasm
+    let _ = wasm
         .execute(
             &contract_address.to_string(),
             &ExecuteMsg::ExecuteSwapOperations {

@@ -1,22 +1,20 @@
-use apollo_cw_asset::{Asset, AssetInfo, AssetInfoUnchecked, AssetList, AssetListUnchecked};
+use apollo_cw_asset::{Asset, AssetInfo, AssetInfoUnchecked};
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    from_binary, to_binary, Addr, Binary, CosmosMsg, Deps, DepsMut, Env, Event, MessageInfo, Order,
-    Response, StdError, StdResult, Uint128,
+    from_json, to_json_binary, Addr, Binary, CosmosMsg, Deps, DepsMut, Env, Event, MessageInfo,
+    Order, Response, StdError, StdResult, Uint128,
 };
 use cw2::set_contract_version;
 use cw20::Cw20ReceiveMsg;
 
 use crate::error::ContractError;
-use crate::helpers::{receive_asset, receive_assets};
+use crate::helpers::receive_asset;
 use crate::msg::{
     BestPathForPairResponse, CallbackMsg, Cw20HookMsg, ExecuteMsg, InstantiateMsg, MigrateMsg,
     QueryMsg,
 };
-use crate::operations::{
-    SwapOperation, SwapOperationsList, SwapOperationsListBase, SwapOperationsListUnchecked,
-};
+use crate::operations::{SwapOperation, SwapOperationsList, SwapOperationsListUnchecked};
 use crate::state::{ADMIN, PATHS};
 
 const CONTRACT_NAME: &str = "crates.io:cw-dex-router";
@@ -129,7 +127,7 @@ pub fn receive_cw20(
 ) -> Result<Response, ContractError> {
     let sender = deps.api.addr_validate(&cw20_msg.sender)?;
 
-    match from_binary(&cw20_msg.msg)? {
+    match from_json(&cw20_msg.msg)? {
         Cw20HookMsg::ExecuteSwapOperations {
             operations,
             minimum_receive,
@@ -238,7 +236,10 @@ pub fn assert_minimum_receive(
     let received_amount = recipient_balance.checked_sub(prev_balance)?;
 
     if received_amount < minimum_receive {
-        return Err(ContractError::FailedMinimumReceive);
+        return Err(ContractError::FailedMinimumReceive {
+            wanted: Asset::new(asset_info.clone(), minimum_receive),
+            got: Asset::new(asset_info, received_amount),
+        });
     }
     Ok(Response::default())
 }
@@ -363,11 +364,11 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
         QueryMsg::SimulateSwapOperations {
             offer_amount,
             operations,
-        } => to_binary(&simulate_swap_operations(deps, offer_amount, operations)?),
+        } => to_json_binary(&simulate_swap_operations(deps, offer_amount, operations)?),
         // QueryMsg::SimulateBasketLiquidate {
         //     offer_assets,
         //     receive_asset,
-        // } => to_binary(&simulate_basket_liquidate(
+        // } => to_json_binary(&simulate_basket_liquidate(
         //     deps,
         //     offer_assets,
         //     receive_asset,
@@ -375,7 +376,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
         QueryMsg::PathsForPair {
             offer_asset,
             ask_asset,
-        } => to_binary(&query_paths_for_pair(
+        } => to_json_binary(&query_paths_for_pair(
             deps,
             offer_asset.check(deps.api)?,
             ask_asset.check(deps.api)?,
@@ -385,7 +386,7 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
             offer_amount,
             ask_asset,
             exclude_paths,
-        } => to_binary(&query_best_path_for_pair(
+        } => to_json_binary(&query_best_path_for_pair(
             deps,
             offer_amount,
             offer_asset.check(deps.api)?,
@@ -393,10 +394,10 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
             exclude_paths,
         )?),
         QueryMsg::SupportedOfferAssets { ask_asset } => {
-            to_binary(&query_supported_offer_assets(deps, ask_asset)?)
+            to_json_binary(&query_supported_offer_assets(deps, ask_asset)?)
         }
         QueryMsg::SupportedAskAssets { offer_asset } => {
-            to_binary(&query_supported_ask_assets(deps, offer_asset)?)
+            to_json_binary(&query_supported_ask_assets(deps, offer_asset)?)
         }
     }
 }
@@ -492,7 +493,7 @@ pub fn query_best_path_for_pair(
 
     let swap_paths: Result<Vec<BestPathForPairResponse>, ContractError> = paths
         .into_iter()
-        .map(|(id, swaps)| {
+        .map(|(_, swaps)| {
             let out = simulate_swap_operations(deps, offer_amount, swaps.clone().into())?;
             Ok(BestPathForPairResponse {
                 operations: swaps,
