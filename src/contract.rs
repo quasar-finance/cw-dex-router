@@ -105,12 +105,14 @@ pub fn execute(
                 CallbackMsg::AssertMinimumReceive {
                     asset_info,
                     prev_balance,
+                    token_in,
                     minimum_receive,
                     recipient,
                 } => assert_minimum_receive(
                     deps,
                     asset_info,
                     prev_balance,
+                    token_in,
                     minimum_receive,
                     recipient,
                 ),
@@ -175,7 +177,7 @@ pub fn execute_swap_operations(
         msgs.extend(receive_asset(
             &info,
             &env,
-            &Asset::new(offer_asset_info, offer_amount),
+            &Asset::new(offer_asset_info.clone(), offer_amount),
         )?);
     };
 
@@ -190,6 +192,7 @@ pub fn execute_swap_operations(
             CallbackMsg::AssertMinimumReceive {
                 asset_info: target_asset_info,
                 prev_balance: recipient_balance,
+                token_in: Asset::new(offer_asset_info, offer_amount.unwrap_or_default()),
                 minimum_receive,
                 recipient,
             }
@@ -228,6 +231,7 @@ pub fn assert_minimum_receive(
     deps: DepsMut,
     asset_info: AssetInfo,
     prev_balance: Uint128,
+    token_in: Asset,
     minimum_receive: Uint128,
     recipient: Addr,
 ) -> Result<Response, ContractError> {
@@ -237,6 +241,7 @@ pub fn assert_minimum_receive(
 
     if received_amount < minimum_receive {
         return Err(ContractError::FailedMinimumReceive {
+            token_in,
             wanted: Asset::new(asset_info.clone(), minimum_receive),
             got: Asset::new(asset_info, received_amount),
         });
