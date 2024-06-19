@@ -42,7 +42,11 @@ pub enum ContractError {
     NoPathsToCheck,
 
     #[error("Did not receive minimum amount, wanted: {wanted}, got: {got}")]
-    FailedMinimumReceive { wanted: Asset, got: Asset },
+    FailedMinimumReceive {
+        token_in: Asset,
+        wanted: Asset,
+        got: Asset,
+    },
 
     #[error("No path found for assets {offer:?} -> {ask:?}")]
     NoPathFound { offer: String, ask: String },

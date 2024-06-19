@@ -1,4 +1,4 @@
-use apollo_cw_asset::{AssetInfo, AssetInfoUnchecked};
+use apollo_cw_asset::{Asset, AssetInfo, AssetInfoUnchecked};
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{wasm_execute, Addr, CosmosMsg, Empty, Env, Uint128};
 use cw20::Cw20ReceiveMsg;
@@ -43,6 +43,7 @@ pub enum CallbackMsg {
     AssertMinimumReceive {
         asset_info: AssetInfo,
         prev_balance: Uint128,
+        token_in: Asset,
         minimum_receive: Uint128,
         recipient: Addr,
     },
