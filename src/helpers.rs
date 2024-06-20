@@ -1,10 +1,7 @@
 use std::vec;
 
-use apollo_cw_asset::{Asset, AssetInfo, AssetInfoBase, AssetList};
-use apollo_utils::assets::separate_natives_and_cw20s;
+use apollo_cw_asset::{Asset, AssetInfo, AssetList};
 use cosmwasm_schema::cw_serde;
-use cw20::{Cw20Coin, Cw20ExecuteMsg};
-
 use cosmwasm_std::{
     to_json_binary, Addr, Api, Coin, CosmosMsg, Env, MessageInfo, QuerierWrapper, QueryRequest,
     StdError, StdResult, Uint128, WasmMsg, WasmQuery,
@@ -93,56 +90,6 @@ impl CwDexRouter {
         )
     }
 
-    /// Returns message to call BasketLiquidate, as well as approve spend on any
-    /// CW20s in `offer_assets`. Also takes care of sending native tokens in
-    /// `offer_assets` to the contract via the funds field.
-    pub fn basket_liquidate_msgs(
-        &self,
-        offer_assets: AssetList,
-        receive_asset: &AssetInfo,
-        minimum_receive: Option<Uint128>,
-        to: Option<String>,
-    ) -> StdResult<Vec<CosmosMsg>> {
-        //Extract all native tokens to send in funds field.
-        let (funds, _) = separate_natives_and_cw20s(&offer_assets);
-
-        //Extract all cw20s and approve allowance to router.
-        let mut msgs: Vec<CosmosMsg> = offer_assets
-            .into_iter()
-            .filter_map(|x| match &x.info {
-                AssetInfoBase::Cw20(addr) => Some(Cw20Coin {
-                    address: addr.to_string(),
-                    amount: x.amount,
-                }),
-                _ => None,
-            })
-            .map(|x| {
-                Ok(CosmosMsg::Wasm(WasmMsg::Execute {
-                    contract_addr: x.address,
-                    msg: to_json_binary(&Cw20ExecuteMsg::IncreaseAllowance {
-                        spender: self.addr().to_string(),
-                        amount: x.amount,
-                        expires: None,
-                    })?,
-                    funds: vec![],
-                }))
-            })
-            .collect::<StdResult<Vec<_>>>()?;
-
-        let swap_msg = self.call(
-            ExecuteMsg::BasketLiquidate {
-                offer_assets: offer_assets.into(),
-                receive_asset: receive_asset.to_owned().into(),
-                minimum_receive,
-                to,
-            },
-            funds,
-        )?;
-        msgs.push(swap_msg);
-
-        Ok(msgs)
-    }
-
     pub fn set_path_msg(
         &self,
         offer_asset: AssetInfo,
@@ -176,21 +123,6 @@ impl CwDexRouter {
         }))
     }
 
-    pub fn simulate_basket_liquidate(
-        &self,
-        querier: &QuerierWrapper,
-        offer_assets: AssetList,
-        receive_asset: &AssetInfo,
-    ) -> StdResult<Uint128> {
-        querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
-            contract_addr: self.0.to_string(),
-            msg: to_json_binary(&QueryMsg::SimulateBasketLiquidate {
-                offer_assets: offer_assets.into(),
-                receive_asset: receive_asset.to_owned().into(),
-            })?,
-        }))
-    }
-
     pub fn query_path_for_pair(
         &self,
         querier: &QuerierWrapper,
@@ -199,7 +131,7 @@ impl CwDexRouter {
     ) -> StdResult<SwapOperationsList> {
         querier.query(&QueryRequest::Wasm(WasmQuery::Smart {
             contract_addr: self.0.to_string(),
-            msg: to_json_binary(&QueryMsg::PathForPair {
+            msg: to_json_binary(&QueryMsg::PathsForPair {
                 offer_asset: offer_asset.to_owned().into(),
                 ask_asset: ask_asset.to_owned().into(),
             })?,

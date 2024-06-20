@@ -1,3 +1,4 @@
+use apollo_cw_asset::Asset;
 use cosmwasm_std::{OverflowError, StdError};
 use cw_controllers::AdminError;
 use cw_dex::CwDexError;
@@ -31,11 +32,21 @@ pub enum ContractError {
     #[error("Unauthorized")]
     Unauthorized,
 
-    #[error("Invalid swap operations: {operations:?}")]
-    InvalidSwapOperations { operations: Vec<SwapOperation> },
+    #[error("Invalid swap operations: {operations:?} {reason}")]
+    InvalidSwapOperations {
+        operations: Vec<SwapOperation>,
+        reason: String,
+    },
 
-    #[error("Did not receive minimum amount")]
-    FailedMinimumReceive,
+    #[error("Paths to check is empty, excluded paths excludes all valid paths")]
+    NoPathsToCheck,
+
+    #[error("Did not receive minimum amount, wanted: {wanted}, got: {got}")]
+    FailedMinimumReceive {
+        token_in: Asset,
+        wanted: Asset,
+        got: Asset,
+    },
 
     #[error("No path found for assets {offer:?} -> {ask:?}")]
     NoPathFound { offer: String, ask: String },
