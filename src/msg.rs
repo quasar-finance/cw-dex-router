@@ -1,7 +1,6 @@
 use apollo_cw_asset::{Asset, AssetInfo, AssetInfoUnchecked};
 use cosmwasm_schema::{cw_serde, QueryResponses};
 use cosmwasm_std::{wasm_execute, Addr, CosmosMsg, Empty, Env, Uint128};
-use cw20::Cw20ReceiveMsg;
 
 use crate::operations::{SwapOperation, SwapOperationsListUnchecked};
 use crate::ContractError;
@@ -10,12 +9,8 @@ pub type InstantiateMsg = Empty;
 
 #[cw_serde]
 pub enum ExecuteMsg {
-    Receive(Cw20ReceiveMsg),
     ExecuteSwapOperations {
         operations: SwapOperationsListUnchecked,
-        /// Optional because we only need the information if the user wants to
-        /// swap a Cw20 with TransferFrom
-        offer_amount: Option<Uint128>,
         minimum_receive: Option<Uint128>,
         to: Option<String>,
     },
@@ -52,15 +47,6 @@ impl CallbackMsg {
         )?
         .into())
     }
-}
-
-#[cw_serde]
-pub enum Cw20HookMsg {
-    ExecuteSwapOperations {
-        operations: SwapOperationsListUnchecked,
-        minimum_receive: Option<Uint128>,
-        to: Option<String>,
-    },
 }
 
 #[cw_serde]

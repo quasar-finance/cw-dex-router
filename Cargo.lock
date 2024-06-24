@@ -847,7 +847,6 @@ dependencies = [
  "cw-it",
  "cw-storage-plus 1.2.0",
  "cw2 1.1.0",
- "cw20 1.1.2",
  "osmosis-std 0.25.0",
  "osmosis-test-tube 25.0.0",
  "osmosis-testing",

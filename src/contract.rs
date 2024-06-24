@@ -2,17 +2,14 @@ use apollo_cw_asset::{Asset, AssetInfo, AssetInfoUnchecked};
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    from_json, to_json_binary, Addr, Binary, CosmosMsg, Deps, DepsMut, Env, Event, MessageInfo,
-    Order, Response, StdError, StdResult, Uint128,
+    to_json_binary, Addr, Binary, CosmosMsg, Deps, DepsMut, Env, Event, MessageInfo, Order,
+    Response, StdError, StdResult, Uint128,
 };
 use cw2::set_contract_version;
-use cw20::Cw20ReceiveMsg;
 
 use crate::error::ContractError;
-use crate::helpers::receive_asset;
 use crate::msg::{
-    BestPathForPairResponse, CallbackMsg, Cw20HookMsg, ExecuteMsg, InstantiateMsg, MigrateMsg,
-    QueryMsg,
+    BestPathForPairResponse, CallbackMsg, ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg,
 };
 use crate::operations::{SwapOperation, SwapOperationsList, SwapOperationsListUnchecked};
 use crate::state::{ADMIN, PATHS};
@@ -41,24 +38,13 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        ExecuteMsg::Receive(msg) => receive_cw20(deps, env, info, msg),
         ExecuteMsg::ExecuteSwapOperations {
             operations,
-            offer_amount,
             minimum_receive,
             to,
         } => {
             let operations = operations.check(deps.as_ref())?;
-            execute_swap_operations(
-                deps,
-                env,
-                info.clone(),
-                info.sender,
-                operations,
-                offer_amount,
-                minimum_receive,
-                to,
-            )
+            execute_swap_operations(deps, env, info, operations, minimum_receive, to)
         }
         ExecuteMsg::SetPath {
             offer_asset,
@@ -104,70 +90,25 @@ pub fn execute(
     }
 }
 
-pub fn receive_cw20(
-    deps: DepsMut,
-    env: Env,
-    info: MessageInfo,
-    cw20_msg: Cw20ReceiveMsg,
-) -> Result<Response, ContractError> {
-    let sender = deps.api.addr_validate(&cw20_msg.sender)?;
-
-    match from_json(&cw20_msg.msg)? {
-        Cw20HookMsg::ExecuteSwapOperations {
-            operations,
-            minimum_receive,
-            to,
-        } => {
-            let operations = operations.check(deps.as_ref())?;
-            execute_swap_operations(
-                deps,
-                env,
-                info,
-                sender,
-                operations,
-                None,
-                minimum_receive,
-                to,
-            )
-        }
-    }
-}
-
 #[allow(clippy::too_many_arguments)]
 pub fn execute_swap_operations(
     deps: DepsMut,
     env: Env,
     info: MessageInfo,
-    sender: Addr,
     operations: SwapOperationsList,
-    offer_amount: Option<Uint128>,
     minimum_receive: Option<Uint128>,
     to: Option<String>,
 ) -> Result<Response, ContractError> {
     //Validate input or use sender address if None
-    let recipient = to.map_or(Ok(sender), |x| deps.api.addr_validate(&x))?;
+    let recipient = to.map_or(Ok(info.sender), |x| deps.api.addr_validate(&x))?;
 
     let target_asset_info = operations.to();
     let offer_asset_info = operations.from();
 
-    // 1. Validate sent asset. We only do this if the passed in optional
-    // `offer_amount` and in this case we do transfer from on it, given that
-    // the offer asset is a CW20. Otherwise we assume the caller already sent
-    // funds and in the first call of execute_swap_operation, we just use the
-    // whole contracts balance.
-    let mut msgs: Vec<CosmosMsg> = vec![];
-    if let Some(offer_amount) = offer_amount {
-        msgs.extend(receive_asset(
-            &info,
-            &env,
-            &Asset::new(offer_asset_info.clone(), offer_amount),
-        )?);
-    };
-
-    // 2. Loop and execute swap operations
+    // Loop and execute swap operations
     let mut msgs: Vec<CosmosMsg> = operations.into_execute_msgs(&env, recipient.clone())?;
 
-    // 3. Assert min receive
+    // Assert min receive
     if let Some(minimum_receive) = minimum_receive {
         let recipient_balance =
             target_asset_info.query_balance(&deps.querier, recipient.clone())?;
@@ -175,7 +116,7 @@ pub fn execute_swap_operations(
             CallbackMsg::AssertMinimumReceive {
                 asset_info: target_asset_info,
                 prev_balance: recipient_balance,
-                token_in: Asset::new(offer_asset_info, offer_amount.unwrap_or_default()),
+                token_in: Asset::from(info.funds[0].clone()),
                 minimum_receive,
                 recipient,
             }

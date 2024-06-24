@@ -1,9 +1,9 @@
 use std::vec;
 
-use apollo_cw_asset::{Asset, AssetInfo, AssetList};
+use apollo_cw_asset::{Asset, AssetInfo};
 use cosmwasm_schema::cw_serde;
 use cosmwasm_std::{
-    to_json_binary, Addr, Api, Coin, CosmosMsg, Env, MessageInfo, QuerierWrapper, QueryRequest,
+    to_json_binary, Addr, Api, Coin, CosmosMsg, MessageInfo, QuerierWrapper, QueryRequest,
     StdError, StdResult, Uint128, WasmMsg, WasmQuery,
 };
 
@@ -74,7 +74,6 @@ impl CwDexRouter {
     pub fn execute_swap_operations_msg(
         &self,
         operations: &SwapOperationsList,
-        offer_amount: Option<Uint128>,
         minimum_receive: Option<Uint128>,
         to: Option<String>,
         funds: Vec<Coin>,
@@ -82,7 +81,6 @@ impl CwDexRouter {
         self.call(
             ExecuteMsg::ExecuteSwapOperations {
                 operations: operations.into(),
-                offer_amount,
                 minimum_receive,
                 to,
             },
@@ -177,32 +175,4 @@ pub fn assert_native_token_received(info: &MessageInfo, asset: &Asset) -> StdRes
         )));
     }
     Ok(())
-}
-
-/// Calls TransferFrom on an Asset if it is a Cw20. If it is a native we just
-/// assert that the native token was already sent to the contract.
-pub fn receive_asset(info: &MessageInfo, env: &Env, asset: &Asset) -> StdResult<Vec<CosmosMsg>> {
-    match &asset.info {
-        AssetInfo::Cw20(_coin) => {
-            let msg =
-                asset.transfer_from_msg(info.sender.clone(), env.contract.address.to_string())?;
-            Ok(vec![msg])
-        }
-        AssetInfo::Native(_token) => {
-            //Here we just assert that the native token was sent with the contract call
-            assert_native_token_received(info, asset)?;
-            Ok(vec![])
-        }
-    }
-}
-
-pub fn receive_assets(
-    info: &MessageInfo,
-    env: &Env,
-    assets: &AssetList,
-) -> StdResult<Vec<CosmosMsg>> {
-    assets.into_iter().try_fold(vec![], |mut msgs, asset| {
-        msgs.append(&mut receive_asset(info, env, asset)?);
-        Ok(msgs)
-    })
 }

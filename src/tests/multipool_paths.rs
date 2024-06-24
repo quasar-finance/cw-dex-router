@@ -522,7 +522,6 @@ fn multiple_pools_work() {
             &contract_address.to_string(),
             &ExecuteMsg::ExecuteSwapOperations {
                 operations: resp.operations.into(),
-                offer_amount: None,
                 minimum_receive: Some(Uint128::one()),
                 to: None,
             },
