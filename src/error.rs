@@ -1,5 +1,5 @@
 use cosmwasm_std::{OverflowError, StdError};
-use cw_asset::{Asset, AssetError};
+use cw_asset::AssetError;
 use cw_controllers::AdminError;
 use osmosis_std::types::osmosis::poolmanager::v1beta1::SwapAmountInRoute;
 use thiserror::Error;

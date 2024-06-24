@@ -1,11 +1,11 @@
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    to_json_binary, Addr, BankMsg, Binary, Deps, DepsMut, Env, Event, MessageInfo, Order, Reply,
+    to_json_binary, BankMsg, Binary, Deps, DepsMut, Env, Event, MessageInfo, Order, Reply,
     Response, StdError, StdResult, SubMsg, Uint128,
 };
 use cw2::set_contract_version;
-use cw_asset::{Asset, AssetInfo, AssetInfoUnchecked};
+use cw_asset::{AssetInfo, AssetInfoUnchecked};
 use osmosis_std::cosmwasm_to_proto_coins;
 use osmosis_std::types::osmosis::poolmanager::v1beta1::{MsgSwapExactAmountIn, SwapAmountInRoute};
 
@@ -123,13 +123,11 @@ pub fn set_path(
     bidirectional: bool,
 ) -> Result<Response, ContractError> {
     ADMIN.assert_admin(deps.as_ref(), &info.sender)?;
-    println!("ask asset");
-    println!("{}", ask_asset.to_string());
+
     // Validate the path
     if path
         .last()
-        .is_some_and(|route| route.token_out_denom != ask_asset.to_string())
-    // inner!
+        .is_some_and(|route| AssetInfo::native(route.token_out_denom.clone()) != ask_asset)
     {
         return Err(ContractError::InvalidSwapOperations {
             operations: path.into(),
