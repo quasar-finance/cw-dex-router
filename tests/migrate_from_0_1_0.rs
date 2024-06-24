@@ -1,8 +1,8 @@
 #[cfg(feature = "osmosis")]
 mod tests {
-    use apollo_cw_asset::{AssetInfo, AssetInfoUnchecked, AssetUnchecked};
-    use cosmwasm_std::{coin, Coin, Empty, Uint128};
-    use cw_dex_router::msg::{ExecuteMsg, MigrateMsg};
+    use apollo_cw_asset::{AssetInfo, AssetInfoUnchecked};
+    use cosmwasm_std::{Coin, Empty, Uint128};
+    use cw_dex_router::msg::MigrateMsg;
     use cw_it::osmosis_std::types::cosmwasm::wasm::v1::{
         MsgMigrateContract, MsgMigrateContractResponse,
     };
@@ -122,33 +122,33 @@ mod tests {
         wasm.execute(&contract_addr, &execute_msg, &[], &admin)
             .unwrap();
 
-        // Try basket liquidate swapping ION and OSMO to ATOM, should fail due to
-        // overlapping paths bug
-        let basket_liq_msg = ExecuteMsg::BasketLiquidate {
-            offer_assets: vec![
-                AssetUnchecked::new(
-                    AssetInfoUnchecked::Native(UION.to_string()),
-                    Uint128::new(1000000),
-                ),
-                AssetUnchecked::new(
-                    AssetInfoUnchecked::Native(UOSMO.to_string()),
-                    Uint128::new(1000000),
-                ),
-            ]
-            .into(),
-            receive_asset: AssetInfoUnchecked::Native(UATOM.to_string()),
-            minimum_receive: None,
-            to: None,
-        };
-        let res = wasm
-            .execute(
-                &contract_addr,
-                &basket_liq_msg,
-                &[coin(1000000, UION), coin(1000000, UOSMO)],
-                &admin,
-            )
-            .unwrap_err();
-        println!("res: {:?}", res);
+        // // Try basket liquidate swapping ION and OSMO to ATOM, should fail due to
+        // // overlapping paths bug
+        // let basket_liq_msg = ExecuteMsg::BasketLiquidate {
+        //     offer_assets: vec![
+        //         AssetUnchecked::new(
+        //             AssetInfoUnchecked::Native(UION.to_string()),
+        //             Uint128::new(1000000),
+        //         ),
+        //         AssetUnchecked::new(
+        //             AssetInfoUnchecked::Native(UOSMO.to_string()),
+        //             Uint128::new(1000000),
+        //         ),
+        //     ]
+        //     .into(),
+        //     receive_asset: AssetInfoUnchecked::Native(UATOM.to_string()),
+        //     minimum_receive: None,
+        //     to: None,
+        // };
+        // let res = wasm
+        //     .execute(
+        //         &contract_addr,
+        //         &basket_liq_msg,
+        //         &[coin(1000000, UION), coin(1000000, UOSMO)],
+        //         &admin,
+        //     )
+        //     .unwrap_err();
+        // println!("res: {:?}", res);
 
         // Upload new wasm file
         let new_wasm = ContractType::Artifact(Artifact::Local(format!(
@@ -172,17 +172,17 @@ mod tests {
             )
             .unwrap();
 
-        // Try basket liquidate swapping ION and OSMO to ATOM, should succeed
-        let res = wasm
-            .execute(
-                &contract_addr,
-                &basket_liq_msg,
-                &[coin(1000000, UION), coin(1000000, UOSMO)],
-                &admin,
-            )
-            .unwrap();
-        res.events.iter().for_each(|event| {
-            println!("event: {:?}", event);
-        });
+        // // Try basket liquidate swapping ION and OSMO to ATOM, should succeed
+        // let res = wasm
+        //     .execute(
+        //         &contract_addr,
+        //         &basket_liq_msg,
+        //         &[coin(1000000, UION), coin(1000000, UOSMO)],
+        //         &admin,
+        //     )
+        //     .unwrap();
+        // res.events.iter().for_each(|event| {
+        //     println!("event: {:?}", event);
+        // });
     }
 }

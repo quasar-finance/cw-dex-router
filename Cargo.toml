@@ -67,3 +67,13 @@ serde_json = "1.0.107"
 
 # Used in osmosis tests, should migrate to new cw-it at some point
 osmosis-testing = { git = "https://github.com/apollodao/osmosis-rust", rev = "430236bd63f26d618e11e59709a56c808c4d427c" }
+
+# osmosis
+osmosis-test-tube = "25.0.0"
+osmosis-std = "0.25.0"
+cw-dex-osmosis = "0.1.0"
+
+# This makes it compiling with features osmosis for the test environment
+[dev-dependencies.cw-dex-router]
+path = "."
+features = ["osmosis"]

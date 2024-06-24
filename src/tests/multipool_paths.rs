@@ -1,7 +1,6 @@
 use std::str::FromStr;
 
 use cosmwasm_std::{Addr, Attribute, Coin, Decimal, Uint128};
-use cw_dex::osmosis::OsmosisPool;
 use osmosis_std::types::cosmos::base::v1beta1::Coin as OsmoCoin;
 use osmosis_std::types::osmosis::concentratedliquidity::v1beta1::{
     CreateConcentratedLiquidityPoolsProposal, Pool, PoolRecord, PoolsRequest,
@@ -133,7 +132,7 @@ pub fn multiple_pool_init() -> (OsmosisTestApp, Addr, Vec<PoolWithDenoms>, Signi
     init_test_contract(
         app,
         admin,
-        "./test-tube-build/wasm32-unknown-unknown/release/cw_dex_router.wasm",
+        "./artifacts/cw_dex_router-osmosis.wasm",
         vec![MsgCreateConcentratedPool {
             sender: "overwritten".to_string(),
             denom0: denom0.to_string(),
@@ -463,7 +462,9 @@ fn multiple_pools_work() {
                     offer_asset: apollo_cw_asset::AssetInfoBase::Native(pool.denom0.clone()),
                     ask_asset: apollo_cw_asset::AssetInfoBase::Native(pool.denom1.clone()),
                     path: SwapOperationsListUnchecked::new(vec![SwapOperationBase {
-                        pool: cw_dex::Pool::Osmosis(OsmosisPool::unchecked(pool.pool.clone())),
+                        pool: crate::operations::Pool::Osmosis(
+                            cw_dex_osmosis::OsmosisPool::unchecked(pool.pool.clone()),
+                        ),
                         offer_asset_info: apollo_cw_asset::AssetInfoBase::Native(
                             pool.denom0.clone(),
                         ),
@@ -512,7 +513,7 @@ fn multiple_pools_work() {
     // the first swap should be over pool 1
     assert_eq!(
         iter.next().unwrap().pool,
-        cw_dex::Pool::Osmosis(OsmosisPool::unchecked(1))
+        crate::operations::Pool::Osmosis(cw_dex_osmosis::OsmosisPool::unchecked(1),),
     );
     assert!(iter.next().is_none());
 

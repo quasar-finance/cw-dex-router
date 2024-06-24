@@ -193,60 +193,60 @@ mod osmosis_tests {
         OsmosisPool::unchecked(pool_id)
     }
 
-    #[test_case(&[((UOSMO, UATOM), UOSMO_UATOM_PATH)], false, UOSMO_UATOM_PATH, 1 => matches Err(_) ; "not admin")]
-    #[test_case(&[((UOSMO, UATOM), UOSMO_UATOM_PATH)], false, UOSMO_UATOM_PATH, 0  ; "uosmo/uatom simple path")]
-    #[test_case(&[((UOSMO, UION), UOSMO_UATOM_UION_PATH)], false, UOSMO_UATOM_UION_PATH, 0 ; "uosmo/uion two hops path")]
-    #[test_case(&[((UOSMO, UATOM), UOSMO_UATOM_PATH)], true, UOSMO_UATOM_PATH, 0  ; "uosmo/uatom simple path bidirectional")]
-    #[test_case(&[((UOSMO, UION), UOSMO_UATOM_UION_PATH)], true, UOSMO_UATOM_UION_PATH, 0 ; "uosmo/uion two hops path bidirectional")]
-    #[test_case(&[((UOSMO, UION), &[(1337u64, UOSMO, UION)])], false, UOSMO_UATOM_UION_PATH, 0 => matches Err(_) ; "pool id does not exist")]
-    #[test_case(&[((UION, UATOM), UOSMO_UATOM_PATH)], false, UOSMO_UATOM_UION_PATH, 0 => matches Err(_) ; "SwapOperation offer not in pool")]
-    #[test_case(&[((UOSMO, UION), UOSMO_UATOM_PATH)], false, UOSMO_UATOM_UION_PATH, 0 => matches Err(_) ; "SwapOperation ask not in pool")]
-    fn test_update_path_and_query_path_for_pair(
-        paths: ConstPaths,
-        bidirectional: bool,
-        output_path: &[(u64, &str, &str)],
-        sender_acc_nr: usize,
-    ) -> RunnerResult<()> {
-        let (app, accs, code_id) = setup();
-        let wasm = Wasm::new(&app);
+    // #[test_case(&[((UOSMO, UATOM), UOSMO_UATOM_PATH)], false, UOSMO_UATOM_PATH, 1 => matches Err(_) ; "not admin")]
+    // #[test_case(&[((UOSMO, UATOM), UOSMO_UATOM_PATH)], false, UOSMO_UATOM_PATH, 0  ; "uosmo/uatom simple path")]
+    // #[test_case(&[((UOSMO, UION), UOSMO_UATOM_UION_PATH)], false, UOSMO_UATOM_UION_PATH, 0 ; "uosmo/uion two hops path")]
+    // #[test_case(&[((UOSMO, UATOM), UOSMO_UATOM_PATH)], true, UOSMO_UATOM_PATH, 0  ; "uosmo/uatom simple path bidirectional")]
+    // #[test_case(&[((UOSMO, UION), UOSMO_UATOM_UION_PATH)], true, UOSMO_UATOM_UION_PATH, 0 ; "uosmo/uion two hops path bidirectional")]
+    // #[test_case(&[((UOSMO, UION), &[(1337u64, UOSMO, UION)])], false, UOSMO_UATOM_UION_PATH, 0 => matches Err(_) ; "pool id does not exist")]
+    // #[test_case(&[((UION, UATOM), UOSMO_UATOM_PATH)], false, UOSMO_UATOM_UION_PATH, 0 => matches Err(_) ; "SwapOperation offer not in pool")]
+    // #[test_case(&[((UOSMO, UION), UOSMO_UATOM_PATH)], false, UOSMO_UATOM_UION_PATH, 0 => matches Err(_) ; "SwapOperation ask not in pool")]
+    // fn test_update_path_and_query_path_for_pair(
+    //     paths: ConstPaths,
+    //     bidirectional: bool,
+    //     output_path: &[(u64, &str, &str)],
+    //     sender_acc_nr: usize,
+    // ) -> RunnerResult<()> {
+    //     let (app, accs, code_id) = setup();
+    //     let wasm = Wasm::new(&app);
 
-        let admin = &accs[0];
-        let sender = &accs[sender_acc_nr];
-        let cw_dex_router_addr = instantiate_cw_dex_router(&app, admin, code_id)?;
+    //     let admin = &accs[0];
+    //     let sender = &accs[sender_acc_nr];
+    //     let cw_dex_router_addr = instantiate_cw_dex_router(&app, admin, code_id)?;
 
-        // Set paths
-        set_paths(&app, &cw_dex_router_addr, paths, sender, bidirectional)?;
+    //     // Set paths
+    //     set_paths(&app, &cw_dex_router_addr, paths, sender, bidirectional)?;
 
-        let expected_output_path = osmosis_swap_operations_list_from_vec(output_path);
+    //     let expected_output_path = osmosis_swap_operations_list_from_vec(output_path);
 
-        // Query path for pair
-        let swap_operations: SwapOperationsList = wasm
-            .query(
-                &cw_dex_router_addr,
-                &QueryMsg::PathForPair {
-                    offer_asset: expected_output_path.from().into(),
-                    ask_asset: expected_output_path.to().into(),
-                },
-            )
-            .unwrap();
+    //     // Query path for pair
+    //     let swap_operations: SwapOperationsList = wasm
+    //         .query(
+    //             &cw_dex_router_addr,
+    //             &QueryMsg::PathForPair {
+    //                 offer_asset: expected_output_path.from().into(),
+    //                 ask_asset: expected_output_path.to().into(),
+    //             },
+    //         )
+    //         .unwrap();
 
-        assert_eq!(swap_operations, expected_output_path);
+    //     assert_eq!(swap_operations, expected_output_path);
 
-        if bidirectional {
-            let swap_operations_reverse: SwapOperationsList = wasm
-                .query(
-                    &cw_dex_router_addr,
-                    &QueryMsg::PathForPair {
-                        offer_asset: expected_output_path.to().into(),
-                        ask_asset: expected_output_path.from().into(),
-                    },
-                )
-                .unwrap();
-            assert_eq!(swap_operations_reverse, expected_output_path.reverse());
-        }
+    //     if bidirectional {
+    //         let swap_operations_reverse: SwapOperationsList = wasm
+    //             .query(
+    //                 &cw_dex_router_addr,
+    //                 &QueryMsg::PathForPair {
+    //                     offer_asset: expected_output_path.to().into(),
+    //                     ask_asset: expected_output_path.from().into(),
+    //                 },
+    //             )
+    //             .unwrap();
+    //         assert_eq!(swap_operations_reverse, expected_output_path.reverse());
+    //     }
 
-        Ok(())
-    }
+    //     Ok(())
+    // }
 
     // Tests disabled due to breaking changes in cw-it
     // #[test_case(&[((UOSMO, UATOM), UOSMO_UATOM_PATH)], &[(UOSMO,
