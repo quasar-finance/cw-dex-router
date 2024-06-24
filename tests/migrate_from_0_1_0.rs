@@ -1,6 +1,6 @@
 #[cfg(feature = "osmosis")]
 mod tests {
-    use apollo_cw_asset::{AssetInfo, AssetInfoUnchecked};
+    use apollo_cw_asset::AssetInfoUnchecked;
     use cosmwasm_std::{Coin, Empty, Uint128};
     use cw_dex_router::msg::MigrateMsg;
     use cw_it::osmosis_std::types::cosmwasm::wasm::v1::{
@@ -10,6 +10,7 @@ mod tests {
     use cw_it::test_tube::{Account, Module, Runner, SigningAccount, Wasm};
     use cw_it::traits::CwItRunner;
     use cw_it::{Artifact, ContractType, OwnedTestRunner};
+    use osmosis_std::types::osmosis::poolmanager::v1beta1::SwapAmountInRoute;
 
     const TEST_ARTIFACTS_DIR: &str = "tests/test_artifacts";
 
@@ -21,22 +22,13 @@ mod tests {
     const UION_UATOM_PATH: &[(u64, &str, &str); 2] = &[(2, UION, UOSMO), (1, UOSMO, UATOM)];
 
     #[cfg(feature = "osmosis")]
-    fn osmosis_swap_operations_list_from_vec(
-        vec: &[(u64, &str, &str)],
-    ) -> cw_dex_router::operations::SwapOperationsList {
-        cw_dex_router::operations::SwapOperationsList::new(
-            vec.iter()
-                .map(
-                    |(pool_id, from, to)| cw_dex_router::operations::SwapOperation {
-                        pool: cw_dex_router::operations::Pool::Osmosis(
-                            cw_dex_osmosis::OsmosisPool::unchecked(pool_id.to_owned()),
-                        ),
-                        offer_asset_info: AssetInfo::Native(from.to_string()),
-                        ask_asset_info: AssetInfo::Native(to.to_string()),
-                    },
-                )
-                .collect(),
-        )
+    fn osmosis_swap_operations_list_from_vec(vec: &[(u64, &str, &str)]) -> Vec<SwapAmountInRoute> {
+        vec.iter()
+            .map(|(pool_id, _, to)| SwapAmountInRoute {
+                pool_id: pool_id.to_owned(),
+                token_out_denom: to.to_string(),
+            })
+            .collect()
     }
 
     #[allow(deprecated)]

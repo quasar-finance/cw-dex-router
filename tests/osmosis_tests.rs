@@ -16,10 +16,6 @@ mod osmosis_tests {
     use cw_dex_osmosis::OsmosisPool;
     use cw_dex_router::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
 
-    use cw_dex_router::operations::{Pool, SwapOperation, SwapOperationsList};
-
-    use cw_dex_router::helpers::{CwDexRouter, CwDexRouterUnchecked};
-
     use cw_it::cosmrs::Any;
     use cw_it::osmosis_std::types::cosmos::bank::v1beta1::QueryBalanceRequest;
     use cw_it::osmosis_test_tube::{Gamm, OsmosisTestApp};
@@ -28,6 +24,7 @@ mod osmosis_tests {
 
     use cw_it::{self, Artifact, ContractType};
 
+    use osmosis_std::types::osmosis::poolmanager::v1beta1::SwapAmountInRoute;
     use test_case::test_case;
 
     const ARTIFACTS_DIR: &str = "target/wasm32-unknown-unknown/release";
@@ -121,16 +118,13 @@ mod osmosis_tests {
     const UION_UATOM_PATH: &[(u64, &str, &str); 1] = &[(2, UION, UATOM)];
     const UOSMO_UATOM_UION_PATH: &[(u64, &str, &str); 2] = &[(1, UOSMO, UATOM), (2, UATOM, UION)];
 
-    fn osmosis_swap_operations_list_from_vec(vec: &[(u64, &str, &str)]) -> SwapOperationsList {
-        SwapOperationsList::new(
-            vec.iter()
-                .map(|(pool_id, from, to)| SwapOperation {
-                    pool: Pool::Osmosis(OsmosisPool::unchecked(pool_id.to_owned())),
-                    offer_asset_info: AssetInfo::Native(from.to_string()),
-                    ask_asset_info: AssetInfo::Native(to.to_string()),
-                })
-                .collect(),
-        )
+    fn osmosis_swap_operations_list_from_vec(vec: &[(u64, &str, &str)]) -> Vec<SwapAmountInRoute> {
+        vec.iter()
+            .map(|(pool_id, _, to)| SwapAmountInRoute {
+                pool_id: pool_id.to_owned(),
+                token_out_denom: to.to_string(),
+            })
+            .collect()
     }
 
     fn set_paths<'a>(

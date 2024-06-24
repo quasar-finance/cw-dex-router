@@ -18,3 +18,5 @@
 artifacts/
 tests/artifacts
 test-tube-build
+node_modules
+.devcontainer

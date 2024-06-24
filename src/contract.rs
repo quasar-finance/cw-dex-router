@@ -1,21 +1,21 @@
-use apollo_cw_asset::{Asset, AssetInfo, AssetInfoUnchecked};
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    to_json_binary, Addr, Binary, CosmosMsg, Deps, DepsMut, Env, Event, MessageInfo, Order,
-    Response, StdError, StdResult, Uint128,
+    to_json_binary, Addr, BankMsg, Binary, Deps, DepsMut, Env, Event, MessageInfo, Order, Reply,
+    Response, StdError, StdResult, SubMsg, Uint128,
 };
 use cw2::set_contract_version;
+use cw_asset::{Asset, AssetInfo, AssetInfoUnchecked};
+use osmosis_std::cosmwasm_to_proto_coins;
+use osmosis_std::types::osmosis::poolmanager::v1beta1::{MsgSwapExactAmountIn, SwapAmountInRoute};
 
 use crate::error::ContractError;
-use crate::msg::{
-    BestPathForPairResponse, CallbackMsg, ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg,
-};
-use crate::operations::{SwapOperation, SwapOperationsList, SwapOperationsListUnchecked};
-use crate::state::{ADMIN, PATHS};
+use crate::msg::{ExecuteMsg, InstantiateMsg, MigrateMsg, QueryMsg};
+use crate::state::{RecipientInfo, ADMIN, PATHS, RECIPIENT_INFO};
 
 const CONTRACT_NAME: &str = "crates.io:cw-dex-router";
 const CONTRACT_VERSION: &str = env!("CARGO_PKG_VERSION");
+const SWAP_REPLY_ID: u64 = 1;
 
 #[cfg_attr(not(feature = "library"), entry_point)]
 pub fn instantiate(
@@ -38,139 +38,80 @@ pub fn execute(
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        ExecuteMsg::ExecuteSwapOperations {
-            operations,
+        ExecuteMsg::Swap {
+            routes,
             minimum_receive,
             to,
-        } => {
-            let operations = operations.check(deps.as_ref())?;
-            execute_swap_operations(deps, env, info, operations, minimum_receive, to)
-        }
+        } => swap(deps, env, info, routes, minimum_receive, to),
         ExecuteMsg::SetPath {
             offer_asset,
             ask_asset,
             path,
             bidirectional,
         } => {
-            let path = path.check(deps.as_ref())?;
             let api = deps.api;
             set_path(
                 deps,
                 info,
-                offer_asset.check(api)?,
-                ask_asset.check(api)?,
+                offer_asset.check(api, None)?,
+                ask_asset.check(api, None)?,
                 path,
                 bidirectional,
             )
         }
-        ExecuteMsg::Callback(msg) => {
-            if info.sender != env.contract.address {
-                return Err(ContractError::Unauthorized);
-            }
-            match msg {
-                CallbackMsg::ExecuteSwapOperation { operation, to } => {
-                    execute_swap_operation(deps, env, operation, to)
-                }
-                CallbackMsg::AssertMinimumReceive {
-                    asset_info,
-                    prev_balance,
-                    token_in,
-                    minimum_receive,
-                    recipient,
-                } => assert_minimum_receive(
-                    deps,
-                    asset_info,
-                    prev_balance,
-                    token_in,
-                    minimum_receive,
-                    recipient,
-                ),
-            }
-        }
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-pub fn execute_swap_operations(
+#[cfg_attr(not(feature = "library"), entry_point)]
+pub fn reply(deps: DepsMut, env: Env, reply: Reply) -> Result<Response, ContractError> {
+    match reply.id {
+        SWAP_REPLY_ID => {
+            let recipient_info = RECIPIENT_INFO.load(deps.storage)?;
+            let balance = deps
+                .querier
+                .query_balance(env.contract.address.to_string(), recipient_info.denom)?;
+            RECIPIENT_INFO.remove(deps.storage);
+            Ok(Response::default().add_message(BankMsg::Send {
+                to_address: recipient_info.address.to_string(),
+                amount: vec![balance],
+            }))
+        }
+        _ => panic!("not implemented"),
+    }
+}
+
+pub fn swap(
     deps: DepsMut,
     env: Env,
     info: MessageInfo,
-    operations: SwapOperationsList,
+    routes: Vec<SwapAmountInRoute>,
     minimum_receive: Option<Uint128>,
     to: Option<String>,
 ) -> Result<Response, ContractError> {
     //Validate input or use sender address if None
-    let recipient = to.map_or(Ok(info.sender), |x| deps.api.addr_validate(&x))?;
+    let recipient = to.map_or(Ok(info.sender.clone()), |x| deps.api.addr_validate(&x))?;
 
-    let target_asset_info = operations.to();
-    let offer_asset_info = operations.from();
-
-    // Loop and execute swap operations
-    let mut msgs: Vec<CosmosMsg> = operations.into_execute_msgs(&env, recipient.clone())?;
-
-    // Assert min receive
-    if let Some(minimum_receive) = minimum_receive {
-        let recipient_balance =
-            target_asset_info.query_balance(&deps.querier, recipient.clone())?;
-        msgs.push(
-            CallbackMsg::AssertMinimumReceive {
-                asset_info: target_asset_info,
-                prev_balance: recipient_balance,
-                token_in: Asset::from(info.funds[0].clone()),
-                minimum_receive,
-                recipient,
-            }
-            .into_cosmos_msg(&env)?,
-        );
-    }
-    Ok(Response::new().add_messages(msgs))
-}
-
-pub fn execute_swap_operation(
-    deps: DepsMut,
-    env: Env,
-    operation: SwapOperation,
-    to: Addr,
-) -> Result<Response, ContractError> {
-    //We use all of the contracts balance.
-    let offer_amount = operation
-        .offer_asset_info
-        .query_balance(&deps.querier, env.contract.address.to_string())?;
-
-    if offer_amount.is_zero() {
-        return Ok(Response::default());
-    }
-
-    let event = Event::new("apollo/cw-dex-router/callback_execute_swap_operation")
-        .add_attribute("operation", format!("{:?}", operation))
-        .add_attribute("offer_amount", offer_amount)
-        .add_attribute("to", to.to_string());
-
-    Ok(operation
-        .to_cosmos_response(deps.as_ref(), &env, offer_amount, None, to)?
+    let out_denom = routes.last().unwrap().token_out_denom.clone();
+    let msg = MsgSwapExactAmountIn {
+        sender: env.contract.address.to_string(),
+        routes,
+        token_in: Some(cosmwasm_to_proto_coins(info.funds.clone())[0].clone()),
+        token_out_min_amount: minimum_receive.unwrap_or_default().to_string(),
+    };
+    RECIPIENT_INFO.save(
+        deps.storage,
+        &RecipientInfo {
+            address: info.sender,
+            denom: out_denom,
+        },
+    )?;
+    let event = Event::new("quasar dex-router")
+        .add_attribute("operation", "swap")
+        .add_attribute("offer_amount", info.funds[0].amount)
+        .add_attribute("to", recipient.to_string());
+    Ok(Response::new()
+        .add_submessage(SubMsg::reply_on_success(msg, SWAP_REPLY_ID))
         .add_event(event))
-}
-
-pub fn assert_minimum_receive(
-    deps: DepsMut,
-    asset_info: AssetInfo,
-    prev_balance: Uint128,
-    token_in: Asset,
-    minimum_receive: Uint128,
-    recipient: Addr,
-) -> Result<Response, ContractError> {
-    let recipient_balance = asset_info.query_balance(&deps.querier, recipient)?;
-
-    let received_amount = recipient_balance.checked_sub(prev_balance)?;
-
-    if received_amount < minimum_receive {
-        return Err(ContractError::FailedMinimumReceive {
-            token_in,
-            wanted: Asset::new(asset_info.clone(), minimum_receive),
-            got: Asset::new(asset_info, received_amount),
-        });
-    }
-    Ok(Response::default())
 }
 
 pub fn set_path(
@@ -178,23 +119,28 @@ pub fn set_path(
     info: MessageInfo,
     offer_asset: AssetInfo,
     ask_asset: AssetInfo,
-    path: SwapOperationsList,
+    path: Vec<SwapAmountInRoute>,
     bidirectional: bool,
 ) -> Result<Response, ContractError> {
     ADMIN.assert_admin(deps.as_ref(), &info.sender)?;
-
+    println!("ask asset");
+    println!("{}", ask_asset.to_string());
     // Validate the path
-    if path.from() != offer_asset || path.to() != ask_asset {
+    if path
+        .last()
+        .is_some_and(|route| route.token_out_denom != ask_asset.to_string())
+    // inner!
+    {
         return Err(ContractError::InvalidSwapOperations {
             operations: path.into(),
-            reason: "The path does not match the offer and ask assets".to_string(),
+            reason: ask_asset.to_string(),
         });
     }
 
     // check if we have any exisiting items under the offer_asset, ask_asset pair
     // we are looking for the highest ID so we can increment it, this should be under Order::Descending in the first item
-    let ps: Result<Vec<(u64, SwapOperationsList)>, StdError> = PATHS
-        .prefix((offer_asset.clone().into(), ask_asset.clone().into()))
+    let ps: Result<Vec<(u64, Vec<SwapAmountInRoute>)>, StdError> = PATHS
+        .prefix((offer_asset.to_string(), ask_asset.to_string()))
         .range(deps.storage, None, None, Order::Descending)
         .collect();
     let paths = ps?;
@@ -203,24 +149,26 @@ pub fn set_path(
     let new_id = last_id + 1;
     PATHS.save(
         deps.storage,
-        ((&offer_asset).into(), (&ask_asset).into(), new_id),
+        (offer_asset.to_string(), ask_asset.to_string(), new_id),
         &path,
     )?;
 
     // reverse path and store if `bidirectional` is true
     if bidirectional {
-        let ps: Result<Vec<(u64, SwapOperationsList)>, StdError> = PATHS
-            .prefix((ask_asset.clone().into(), offer_asset.clone().into()))
+        let ps: Result<Vec<(u64, Vec<SwapAmountInRoute>)>, StdError> = PATHS
+            .prefix((ask_asset.to_string(), offer_asset.to_string()))
             .range(deps.storage, None, None, Order::Descending)
             .collect();
         let paths = ps?;
         let last_id = paths.first().map(|(val, _)| val).unwrap_or(&0);
 
         let new_id = last_id + 1;
+        let mut path = path;
+        path.reverse();
         PATHS.save(
             deps.storage,
-            (ask_asset.into(), offer_asset.into(), new_id),
-            &path.reverse(),
+            (ask_asset.to_string(), offer_asset.to_string(), new_id),
+            &path,
         )?;
     }
 
@@ -228,66 +176,67 @@ pub fn set_path(
 }
 
 #[cfg_attr(not(feature = "library"), entry_point)]
-pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
+pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> Result<Binary, ContractError> {
     match msg {
-        QueryMsg::SimulateSwapOperations {
-            offer_amount,
-            operations,
-        } => to_json_binary(&simulate_swap_operations(deps, offer_amount, operations)?),
+        // QueryMsg::SimulateSwapOperations { offer, operations } => {
+        //     to_json_binary(&simulate_swap_operations(deps, offer, operations)?)
+        // }
         QueryMsg::PathsForPair {
             offer_asset,
             ask_asset,
-        } => to_json_binary(&query_paths_for_pair(
+        } => Ok(to_json_binary(&query_paths_for_pair(
             deps,
-            offer_asset.check(deps.api)?,
-            ask_asset.check(deps.api)?,
+            offer_asset.check(deps.api, None)?,
+            ask_asset.check(deps.api, None)?,
+        )?)?),
+        // QueryMsg::BestPathForPair {
+        //     offer_asset,
+        //     offer_amount,
+        //     ask_asset,
+        //     exclude_paths,
+        // } => to_json_binary(&query_best_path_for_pair(
+        //     deps,
+        //     offer_amount,
+        //     offer_asset.check(deps.api)?,
+        //     ask_asset.check(deps.api)?,
+        //     exclude_paths,
+        // )?),
+        QueryMsg::SupportedOfferAssets { ask_asset } => Ok(to_json_binary(
+            &query_supported_offer_assets(deps, ask_asset)?,
         )?),
-        QueryMsg::BestPathForPair {
-            offer_asset,
-            offer_amount,
-            ask_asset,
-            exclude_paths,
-        } => to_json_binary(&query_best_path_for_pair(
-            deps,
-            offer_amount,
-            offer_asset.check(deps.api)?,
-            ask_asset.check(deps.api)?,
-            exclude_paths,
+        QueryMsg::SupportedAskAssets { offer_asset } => Ok(to_json_binary(
+            &query_supported_ask_assets(deps, offer_asset)?,
         )?),
-        QueryMsg::SupportedOfferAssets { ask_asset } => {
-            to_json_binary(&query_supported_offer_assets(deps, ask_asset)?)
-        }
-        QueryMsg::SupportedAskAssets { offer_asset } => {
-            to_json_binary(&query_supported_ask_assets(deps, offer_asset)?)
-        }
     }
 }
 
-pub fn simulate_swap_operations(
-    deps: Deps,
-    mut offer_amount: Uint128,
-    operations: SwapOperationsListUnchecked,
-) -> Result<Uint128, ContractError> {
-    let operations = operations.check(deps)?;
+// pub fn simulate_swap_operations(
+//     deps: Deps,
+//     offer: Coin,
+//     routes: Vec<SwapAmountInRoute>,
+// ) -> Result<Uint128, ContractError> {
+//     let querier = PoolmanagerQuerier::new(&deps.querier);
+//     let res = querier
 
-    for operation in operations.into_iter() {
-        let offer_asset = Asset::new(operation.offer_asset_info, offer_amount);
+//     let mut offer_asset = Asset::from(offer);
+//     for route in routes.into_iter() {
+//         let receive_info = AssetInfo::native(route.token_out_denom);
+//         let receive_amount = operation
+//             .pool
+//             .simulate_swap(deps, offer_asset, receive_info)?;
+//         offer_asset = Asset::new(receive_info, receive_amount);
+//     }
 
-        offer_amount = operation
-            .pool
-            .simulate_swap(deps, offer_asset, operation.ask_asset_info)?;
-    }
-
-    Ok(offer_amount)
-}
+//     Ok(offer_amount)
+// }
 
 pub fn query_paths_for_pair(
     deps: Deps,
     offer_asset: AssetInfo,
     ask_asset: AssetInfo,
-) -> Result<Vec<(u64, SwapOperationsList)>, ContractError> {
-    let ps: StdResult<Vec<(u64, SwapOperationsList)>> = PATHS
-        .prefix(((&offer_asset).into(), (&ask_asset).into()))
+) -> Result<Vec<(u64, Vec<SwapAmountInRoute>)>, ContractError> {
+    let ps: StdResult<Vec<(u64, Vec<SwapAmountInRoute>)>> = PATHS
+        .prefix((offer_asset.to_string(), ask_asset.to_string()))
         .range(deps.storage, None, None, Order::Ascending)
         .collect();
     let paths = ps?;
@@ -301,41 +250,41 @@ pub fn query_paths_for_pair(
     }
 }
 
-pub fn query_best_path_for_pair(
-    deps: Deps,
-    offer_amount: Uint128,
-    offer_asset: AssetInfo,
-    ask_asset: AssetInfo,
-    exclude_paths: Option<Vec<u64>>,
-) -> Result<Option<BestPathForPairResponse>, ContractError> {
-    let paths = query_paths_for_pair(deps, offer_asset, ask_asset)?;
-    let excluded = exclude_paths.unwrap_or(vec![]);
-    let paths: Vec<(u64, SwapOperationsList)> = paths
-        .into_iter()
-        .filter(|(id, _)| !excluded.contains(id))
-        .collect();
+// pub fn query_best_path_for_pair(
+//     deps: Deps,
+//     offer_amount: Uint128,
+//     offer_asset: AssetInfo,
+//     ask_asset: AssetInfo,
+//     exclude_paths: Option<Vec<u64>>,
+// ) -> Result<Option<BestPathForPairResponse>, ContractError> {
+//     let paths = query_paths_for_pair(deps, offer_asset, ask_asset)?;
+//     let excluded = exclude_paths.unwrap_or(vec![]);
+//     let paths: Vec<(u64, Vec<SwapAmountInRoute>)> = paths
+//         .into_iter()
+//         .filter(|(id, _)| !excluded.contains(id))
+//         .collect();
 
-    if paths.is_empty() {
-        return Err(ContractError::NoPathsToCheck {});
-    }
+//     if paths.is_empty() {
+//         return Err(ContractError::NoPathsToCheck {});
+//     }
 
-    let swap_paths: Result<Vec<BestPathForPairResponse>, ContractError> = paths
-        .into_iter()
-        .map(|(_, swaps)| {
-            let out = simulate_swap_operations(deps, offer_amount, swaps.clone().into())?;
-            Ok(BestPathForPairResponse {
-                operations: swaps,
-                return_amount: out,
-            })
-        })
-        .collect();
+//     let swap_paths: Result<Vec<BestPathForPairResponse>, ContractError> = paths
+//         .into_iter()
+//         .map(|(_, swaps)| {
+//             let out = simulate_swap_operations(deps, offer_amount, swaps.clone().into())?;
+//             Ok(BestPathForPairResponse {
+//                 operations: swaps,
+//                 return_amount: out,
+//             })
+//         })
+//         .collect();
 
-    let best_path = swap_paths?
-        .into_iter()
-        .max_by(|a, b| a.return_amount.cmp(&b.return_amount));
+//     let best_path = swap_paths?
+//         .into_iter()
+//         .max_by(|a, b| a.return_amount.cmp(&b.return_amount));
 
-    Ok(best_path)
-}
+//     Ok(best_path)
+// }
 
 pub fn query_supported_offer_assets(
     deps: Deps,
@@ -344,8 +293,8 @@ pub fn query_supported_offer_assets(
     let mut offer_assets: Vec<AssetInfo> = vec![];
     for x in PATHS.range(deps.storage, None, None, Order::Ascending) {
         let ((offer_asset, path_ask_asset, _), _) = x?;
-        if path_ask_asset == ask_asset.check(deps.api)? {
-            offer_assets.push(offer_asset.into());
+        if AssetInfo::native(path_ask_asset) == ask_asset.check(deps.api, None)? {
+            offer_assets.push(AssetInfo::native(offer_asset));
         }
     }
     Ok(offer_assets)
@@ -358,8 +307,8 @@ pub fn query_supported_ask_assets(
     let mut ask_assets: Vec<AssetInfo> = vec![];
     for x in PATHS.range(deps.storage, None, None, Order::Ascending) {
         let ((path_offer_asset, ask_asset, _), _) = x?;
-        if path_offer_asset == offer_asset.check(deps.api)? {
-            ask_assets.push(ask_asset.into());
+        if AssetInfo::native(path_offer_asset) == offer_asset.check(deps.api, None)? {
+            ask_assets.push(AssetInfo::native(ask_asset));
         }
     }
     Ok(ask_assets)

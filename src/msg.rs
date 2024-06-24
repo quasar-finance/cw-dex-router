@@ -1,58 +1,29 @@
-use apollo_cw_asset::{Asset, AssetInfo, AssetInfoUnchecked};
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{wasm_execute, Addr, CosmosMsg, Empty, Env, Uint128};
-
-use crate::operations::{SwapOperation, SwapOperationsListUnchecked};
-use crate::ContractError;
+use cosmwasm_std::{Empty, Uint128};
+use cw_asset::{AssetInfo, AssetInfoUnchecked};
+use osmosis_std::types::osmosis::poolmanager::v1beta1::SwapAmountInRoute;
 
 pub type InstantiateMsg = Empty;
 
 #[cw_serde]
 pub enum ExecuteMsg {
-    ExecuteSwapOperations {
-        operations: SwapOperationsListUnchecked,
+    Swap {
+        routes: Vec<SwapAmountInRoute>,
         minimum_receive: Option<Uint128>,
         to: Option<String>,
     },
     SetPath {
         offer_asset: AssetInfoUnchecked,
         ask_asset: AssetInfoUnchecked,
-        path: SwapOperationsListUnchecked,
+        path: Vec<SwapAmountInRoute>,
         bidirectional: bool,
     },
-    Callback(CallbackMsg),
-}
-
-#[cw_serde]
-pub enum CallbackMsg {
-    ExecuteSwapOperation {
-        operation: SwapOperation,
-        to: Addr,
-    },
-    AssertMinimumReceive {
-        asset_info: AssetInfo,
-        prev_balance: Uint128,
-        token_in: Asset,
-        minimum_receive: Uint128,
-        recipient: Addr,
-    },
-}
-
-impl CallbackMsg {
-    pub fn into_cosmos_msg(&self, env: &Env) -> Result<CosmosMsg, ContractError> {
-        Ok(wasm_execute(
-            env.contract.address.to_string(),
-            &ExecuteMsg::Callback(self.clone()),
-            vec![],
-        )?
-        .into())
-    }
 }
 
 #[cw_serde]
 pub struct BestPathForPairResponse {
     /// the operations that will be executed to perform the swap
-    pub operations: crate::operations::SwapOperationsList,
+    pub operations: Vec<SwapAmountInRoute>,
     /// the amount of tokens that are expected to be received after the swap
     pub return_amount: Uint128,
 }
@@ -60,27 +31,26 @@ pub struct BestPathForPairResponse {
 #[cw_serde]
 #[derive(QueryResponses)]
 pub enum QueryMsg {
-    #[returns(Uint128)]
-    SimulateSwapOperations {
-        offer_amount: Uint128,
-        operations: SwapOperationsListUnchecked,
-    },
-
+    // #[returns(Uint128)]
+    // SimulateSwapOperations {
+    //     offer: Asset,
+    //     operations: Vec<SwapAmountInRoute>,
+    // },
     /// Returns all the current path for a given (offer_asset, ask_asset) pair.
-    #[returns(Vec<crate::operations::SwapOperationsList>)]
+    #[returns(Vec<SwapAmountInRoute>)]
     PathsForPair {
         offer_asset: AssetInfoUnchecked,
         ask_asset: AssetInfoUnchecked,
     },
     /// finds the best path for a given (offer_asset, ask_asset) pair.
     /// if no path is found, returns None.
-    #[returns(Option<BestPathForPairResponse>)]
-    BestPathForPair {
-        offer_asset: AssetInfoUnchecked,
-        offer_amount: Uint128,
-        ask_asset: AssetInfoUnchecked,
-        exclude_paths: Option<Vec<u64>>,
-    },
+    // #[returns(Option<BestPathForPairResponse>)]
+    // BestPathForPair {
+    //     offer_asset: AssetInfoUnchecked,
+    //     offer_amount: Uint128,
+    //     ask_asset: AssetInfoUnchecked,
+    //     exclude_paths: Option<Vec<u64>>,
+    // },
 
     /// Returns all the assets from which there are paths to a given ask asset.
     #[returns(Vec<AssetInfo>)]

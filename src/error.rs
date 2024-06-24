@@ -1,10 +1,8 @@
-use apollo_cw_asset::Asset;
 use cosmwasm_std::{OverflowError, StdError};
+use cw_asset::{Asset, AssetError};
 use cw_controllers::AdminError;
-use cw_dex::CwDexError;
+use osmosis_std::types::osmosis::poolmanager::v1beta1::SwapAmountInRoute;
 use thiserror::Error;
-
-use crate::operations::SwapOperation;
 
 #[derive(Error, Debug)]
 pub enum ContractError {
@@ -12,13 +10,13 @@ pub enum ContractError {
     Std(#[from] StdError),
 
     #[error("{0}")]
-    CwDexError(#[from] CwDexError),
-
-    #[error("{0}")]
     Overflow(#[from] OverflowError),
 
     #[error("{0}")]
     AdminError(#[from] AdminError),
+
+    #[error("{0}")]
+    Asset(#[from] AssetError),
 
     #[error("Incorrect amount of native token sent. You don't need to pass in offer_amount if using native tokens.")]
     IncorrectNativeAmountSent,
@@ -34,19 +32,12 @@ pub enum ContractError {
 
     #[error("Invalid swap operations: {operations:?} {reason}")]
     InvalidSwapOperations {
-        operations: Vec<SwapOperation>,
+        operations: Vec<SwapAmountInRoute>,
         reason: String,
     },
 
     #[error("Paths to check is empty, excluded paths excludes all valid paths")]
     NoPathsToCheck,
-
-    #[error("Did not receive minimum amount, wanted: {wanted}, got: {got}")]
-    FailedMinimumReceive {
-        token_in: Asset,
-        wanted: Asset,
-        got: Asset,
-    },
 
     #[error("No path found for assets {offer:?} -> {ask:?}")]
     NoPathFound { offer: String, ask: String },
